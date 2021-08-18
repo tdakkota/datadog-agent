@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DataDog/datadog-agent/pkg/config"
 	"github.com/DataDog/datadog-agent/pkg/trace/info"
 	"github.com/DataDog/datadog-agent/pkg/trace/logutil"
 	"github.com/DataDog/datadog-agent/pkg/trace/metrics"
@@ -27,46 +26,21 @@ const (
 	profilingURLDefault = "https://intake.profile.datadoghq.com/v1/input"
 )
 
-// profilingEndpoints returns the profiling intake urls and their corresponding
-// api keys based on agent configuration. The main endpoint is always returned as
-// the first element in the slice.
-func profilingEndpoints(apiKey string) (urls []*url.URL, apiKeys []string, err error) {
-	main := profilingURLDefault
-	if v := config.Datadog.GetString("apm_config.profiling_dd_url"); v != "" {
-		main = v
-	} else if site := config.Datadog.GetString("site"); site != "" {
-		main = fmt.Sprintf(profilingURLTemplate, site)
-	}
-	u, err := url.Parse(main)
-	if err != nil {
-		// if the main intake URL is invalid we don't use additional endpoints
-		return nil, nil, fmt.Errorf("error parsing main profiling intake URL %s: %v", main, err)
-	}
-	urls = append(urls, u)
-	apiKeys = append(apiKeys, apiKey)
-
-	if opt := "apm_config.profiling_additional_endpoints"; config.Datadog.IsSet(opt) {
-		extra := config.Datadog.GetStringMapStringSlice(opt)
-		for endpoint, keys := range extra {
-			u, err := url.Parse(endpoint)
-			if err != nil {
-				log.Errorf("Error parsing additional profiling intake URL %s: %v", endpoint, err)
-				continue
-			}
-			for _, key := range keys {
-				urls = append(urls, u)
-				apiKeys = append(apiKeys, key)
-			}
-		}
-	}
-	return urls, apiKeys, nil
+var profilingEndpointsConfig = proxyEndpointsConfig{
+	name:                      "profiling",
+	mainConfig:                "apm_config.profiling_dd_url",
+	additionalEndpointsConfig: "apm_config.profiling_additional_endpoints",
+	// urlTemplate specifies the template for obtaining the profiling URL along with the site.
+	urlTemplate: "https://intake.profile.%s/v1/input",
+	// defaultURL specifies the default intake API URL.
+	defaultURL: "https://intake.profile.datadoghq.com/v1/input",
 }
 
 // profileProxyHandler returns a new HTTP handler which will proxy requests to the profiling intakes.
 // If the main intake URL can not be computed because of config, the returned handler will always
 // return http.StatusInternalServerError along with a clarification.
 func (r *HTTPReceiver) profileProxyHandler() http.Handler {
-	targets, keys, err := profilingEndpoints(r.conf.APIKey())
+	targets, keys, err := profilingEndpointsConfig.proxyEndpoints(r.conf.APIKey())
 	if err != nil {
 		return errorHandler(err)
 	}

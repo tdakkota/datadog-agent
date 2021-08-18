@@ -94,21 +94,21 @@ func printEndpoints(endpoints []*traceconfig.Endpoint) []string {
 func TestProfilingEndpoints(t *testing.T) {
 	t.Run("single", func(t *testing.T) {
 		defer mockConfig("apm_config.profiling_dd_url", "https://intake.profile.datadoghq.fr/v1/input")()
-		urls, keys, err := profilingEndpoints("test_api_key")
+		urls, keys, err := profilingEndpointsConfig.proxyEndpoints("test_api_key")
 		assert.NoError(t, err)
 		assert.Equal(t, urls, makeURLs(t, "https://intake.profile.datadoghq.fr/v1/input"))
 		assert.Equal(t, keys, []string{"test_api_key"})
 	})
 	t.Run("site", func(t *testing.T) {
 		defer mockConfig("site", "datadoghq.eu")()
-		urls, keys, err := profilingEndpoints("test_api_key")
+		urls, keys, err := profilingEndpointsConfig.proxyEndpoints("test_api_key")
 		assert.NoError(t, err)
 		assert.Equal(t, urls, makeURLs(t, "https://intake.profile.datadoghq.eu/v1/input"))
 		assert.Equal(t, keys, []string{"test_api_key"})
 	})
 
 	t.Run("default", func(t *testing.T) {
-		urls, keys, err := profilingEndpoints("test_api_key")
+		urls, keys, err := profilingEndpointsConfig.proxyEndpoints("test_api_key")
 		assert.NoError(t, err)
 		assert.Equal(t, urls, makeURLs(t, "https://intake.profile.datadoghq.com/v1/input"))
 		assert.Equal(t, keys, []string{"test_api_key"})
@@ -122,7 +122,7 @@ func TestProfilingEndpoints(t *testing.T) {
 				"https://dd.datad0g.com":          {"api_key_3"},
 			},
 		})()
-		urls, keys, err := profilingEndpoints("api_key_0")
+		urls, keys, err := profilingEndpointsConfig.proxyEndpoints("api_key_0")
 		assert.NoError(t, err)
 		expectedURLs := makeURLs(t,
 			"https://intake.profile.datadoghq.jp/v1/input",
