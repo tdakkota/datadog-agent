@@ -28,7 +28,7 @@ const (
 
 var profilingEndpointsConfig = proxyEndpointsConfig{
 	name:                      "profiling",
-	mainConfig:                "apm_config.profiling_dd_url",
+	ddURLConfig:               "apm_config.profiling_dd_url",
 	additionalEndpointsConfig: "apm_config.profiling_additional_endpoints",
 	// urlTemplate specifies the template for obtaining the profiling URL along with the site.
 	urlTemplate: "https://intake.profile.%s/v1/input",

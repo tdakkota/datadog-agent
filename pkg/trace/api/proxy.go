@@ -20,15 +20,26 @@ import (
 
 type proxyEndpointsConfig struct {
 	name                      string
-	mainConfig                string
-	additionalEndpointsConfig string
-	urlTemplate               string
+	enabledConfig             string // config entry for enabling disabling proxy endpoint, can be empty
+	ddURLConfig               string // config entry for intake url *_DD_URL
+	additionalEndpointsConfig string // config entry for adding additional, can be empty
+	urlTemplate               string // template to build intake URL based on SITE config
 	defaultURL                string
 }
 
+func (pec *proxyEndpointsConfig) proxyRoundTripper(client http.RoundTripper, apiKey string) (http.RoundTripper, error) {
+	urls, apiKeys, err := pec.proxyEndpoints(apiKey)
+	return &proxyMultiTransport{
+		rt:      client,
+		targets: urls,
+		keys:    apiKeys,
+		baseTag: "type:" + pec.name,
+	}, err
+
+}
 func (pec *proxyEndpointsConfig) proxyEndpoints(apiKey string) (urls []*url.URL, apiKeys []string, err error) {
 	main := pec.defaultURL
-	if v := config.Datadog.GetString(pec.mainConfig); v != "" {
+	if v := config.Datadog.GetString(pec.ddURLConfig); v != "" {
 		main = v
 	} else if site := config.Datadog.GetString("site"); site != "" {
 		main = fmt.Sprintf(pec.urlTemplate, site)
@@ -41,7 +52,7 @@ func (pec *proxyEndpointsConfig) proxyEndpoints(apiKey string) (urls []*url.URL,
 	urls = append(urls, u)
 	apiKeys = append(apiKeys, apiKey)
 
-	if config.Datadog.IsSet(pec.additionalEndpointsConfig) {
+	if pec.additionalEndpointsConfig != "" && config.Datadog.IsSet(pec.additionalEndpointsConfig) {
 		extra := config.Datadog.GetStringMapStringSlice(pec.additionalEndpointsConfig)
 		for endpoint, keys := range extra {
 			u, err := url.Parse(endpoint)
@@ -62,13 +73,26 @@ func (pec *proxyEndpointsConfig) proxyEndpoints(apiKey string) (urls []*url.URL,
 // If the main intake URL can not be computed because of config, the returned handler will always
 // return http.StatusInternalServerError along with a clarification.
 func (r *HTTPReceiver) forwardingProxyHandler(pec *proxyEndpointsConfig) http.Handler {
-	return pec.newForwardingProxy(r.conf.NewHTTPTransport(), r.conf.APIKey(), r.conf.Hostname, r.conf.DefaultEnv)
+	if pec.enabledConfig != "" && !config.Datadog.GetBool(pec.enabledConfig) {
+		return pec.proxyDisabledHandler(nil)
+	}
+	transport, err := pec.proxyRoundTripper(r.conf.NewHTTPTransport(), r.conf.APIKey())
+	if err != nil {
+		return pec.proxyDisabledHandler(err)
+	}
+
+	return pec.newForwardingProxy(transport, r.conf.Hostname, r.conf.DefaultEnv)
 }
 
-func (pec *proxyEndpointsConfig) errorProxyHandler(err error) http.Handler {
+func (pec *proxyEndpointsConfig) proxyDisabledHandler(err error) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		msg := fmt.Sprintf("%s proxy forwarder is OFF: %v", pec.name, err)
-		http.Error(w, msg, http.StatusInternalServerError)
+		if err != nil {
+			msg := fmt.Sprintf("%s proxy forwarder is OFF: %v", pec.name, err)
+			http.Error(w, msg, http.StatusInternalServerError)
+		} else {
+			msg := fmt.Sprintf("%s proxy forwarder is OFF", pec.name)
+			http.Error(w, msg, http.StatusMethodNotAllowed)
+		}
 	})
 }
 
@@ -79,13 +103,14 @@ func (pec *proxyEndpointsConfig) errorProxyHandler(err error) http.Handler {
 // is proxied back to the client, while for all aditional endpoints the
 // response is discarded. There is no de-duplication done between endpoint
 // hosts or api keys.
-type multiProxyTransport struct {
+type proxyMultiTransport struct {
 	rt      http.RoundTripper
 	targets []*url.URL
 	keys    []string
+	baseTag string
 }
 
-func (m *multiProxyTransport) overrideTarget(r *http.Request, targetUrl *url.URL, apiKey string) error {
+func (m *proxyMultiTransport) overrideTarget(r *http.Request, targetUrl *url.URL, apiKey string) error {
 	newTargetUrl := *targetUrl
 	newTargetUrl.Path = r.URL.Path
 
@@ -100,12 +125,7 @@ func (m *multiProxyTransport) overrideTarget(r *http.Request, targetUrl *url.URL
 //
 // The tags will be added as a header to all proxied requests.
 // For more details please see multiTransport.
-func (pec *proxyEndpointsConfig) newForwardingProxy(transport http.RoundTripper, apiKey string, agentHostname string, agentEnv string) http.Handler {
-	targets, keys, err := pec.proxyEndpoints(apiKey)
-	if err != nil {
-		return pec.errorProxyHandler(err)
-	}
-
+func (pec *proxyEndpointsConfig) newForwardingProxy(transport http.RoundTripper, agentHostname string, agentEnv string) http.Handler {
 	director := func(req *http.Request) {
 		req.Header.Set("Via", fmt.Sprintf("trace-agent %s", info.Version))
 		if _, ok := req.Header["User-Agent"]; !ok {
@@ -117,18 +137,22 @@ func (pec *proxyEndpointsConfig) newForwardingProxy(transport http.RoundTripper,
 
 		req.Header.Set("DD-Agent-Hostname", agentHostname)
 		req.Header.Set("DD-Agent-Env", agentEnv)
-
-		metrics.Count("datadog.trace_agent.proxy", 1, []string{"type:" + pec.name}, 1)
 	}
 	logger := logutil.NewThrottled(5, 10*time.Second) // limit to 5 messages every 10 seconds
 	return &httputil.ReverseProxy{
 		Director:  director,
 		ErrorLog:  stdlog.New(logger, fmt.Sprintf("%s.Proxy: ", pec.name), 0),
-		Transport: &multiProxyTransport{transport, targets, keys},
+		Transport: transport,
 	}
 }
 
-func (m *multiProxyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+func (m *proxyMultiTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	metrics.Count("datadog.trace_agent.proxy.request_count", 1, []string{m.baseTag}, 1)
+	now := time.Now()
+	defer func() {
+		metrics.Timing("datadog.trace_agent.proxy.request_duration", time.Since(now), []string{m.baseTag}, 1)
+	}()
+
 	if len(m.targets) == 1 {
 		m.overrideTarget(req, m.targets[0], m.keys[0])
 		return m.rt.RoundTrip(req)

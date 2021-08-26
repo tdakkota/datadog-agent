@@ -11,6 +11,12 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 )
 
+func setupAPMTelemetry(config Config) {
+	config.BindEnvAndSetDefault("apm_config.telemetry.enabled", true, "DD_APM_TELEMETRY_ENABLED")
+	config.BindEnv("apm_config.telemetry.dd_url", "DD_APM_TELEMETRY_DD_URL")
+	config.BindEnv("apm_config.telemetry.additional_endpoints", "DD_APM_TELEMETRY_ADDITIONAL_ENDPOINTS")
+}
+
 func setupAPM(config Config) {
 	config.SetKnown("apm_config.obfuscation.elasticsearch.enabled")
 	config.SetKnown("apm_config.obfuscation.elasticsearch.keep_values")
@@ -86,6 +92,7 @@ func setupAPM(config Config) {
 	config.BindEnv("apm_config.debugger_dd_url", "DD_APM_DEBUGGER_DD_URL")
 	config.BindEnv("experimental.otlp.http_port", "DD_OTLP_HTTP_PORT")
 	config.BindEnv("experimental.otlp.grpc_port", "DD_OTLP_GRPC_PORT")
+	setupAPMTelemetry(config)
 
 	config.SetEnvKeyTransformer("apm_config.ignore_resources", func(in string) interface{} {
 		r, err := splitCSVString(in, ',')
