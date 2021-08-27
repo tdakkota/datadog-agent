@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/DataDog/datadog-agent/pkg/config"
@@ -112,7 +113,10 @@ type proxyMultiTransport struct {
 
 func (m *proxyMultiTransport) overrideTarget(r *http.Request, targetUrl *url.URL, apiKey string) error {
 	newTargetUrl := *targetUrl
-	newTargetUrl.Path = r.URL.Path
+	newPath := r.URL.Path
+	if idx := strings.Index(newPath, "/"); idx != -1 {
+		newPath = newPath[idx:]
+	}
 
 	r.Host = targetUrl.Host
 	r.URL = &newTargetUrl
