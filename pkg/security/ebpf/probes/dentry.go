@@ -7,7 +7,7 @@
 
 package probes
 
-import "github.com/DataDog/ebpf-manager/manager"
+import manager "github.com/DataDog/ebpf-manager"
 
 // getDentryResolverTailCallRoutes is the list of routes used during the dentry resolution process
 func getDentryResolverTailCallRoutes() []manager.TailCallRoute {
