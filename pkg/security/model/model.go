@@ -236,7 +236,8 @@ type Process struct {
 	Filesystem          string `field:"file.filesystem"`
 	PathResolutionError error  `field:"-"`
 
-	ContainerID string `field:"container.id"`
+	ContainerID   string   `field:"container.id"`
+	ContainerTags []string `field:"-"`
 
 	TTYName string `field:"tty_name"`
 	Comm    string `field:"comm"`
