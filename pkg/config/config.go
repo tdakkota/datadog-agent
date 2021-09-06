@@ -914,7 +914,7 @@ func InitConfig(config Config) {
 	config.BindEnvAndSetDefault("runtime_security_config.log_patterns", []string{})
 	bindEnvAndSetLogsConfigKeys(config, "runtime_security_config.endpoints.")
 	config.BindEnvAndSetDefault("runtime_security_config.self_test.enabled", true)
-	config.BindEnvAndSetDefault("runtime_security_config.activity_dump_manager.enabled", false)
+	config.BindEnvAndSetDefault("runtime_security_config.activity_dump_manager.enabled", true)
 	config.BindEnvAndSetDefault("runtime_security_config.activity_dump_manager.cleanup_period", 30)
 
 	// Serverless Agent
