@@ -13,6 +13,7 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/network"
 	"github.com/DataDog/datadog-agent/pkg/network/config"
 	"github.com/DataDog/datadog-agent/pkg/network/dns"
+	"github.com/DataDog/datadog-agent/pkg/network/http"
 	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 )
@@ -29,6 +30,7 @@ type Tracer struct {
 	stopChan        chan struct{}
 	state           network.State
 	reverseDNS      dns.ReverseDNS
+	httpMonitor     *http.Monitor
 
 	activeBuffer *network.ConnectionBuffer
 	closedBuffer *network.ConnectionBuffer
@@ -73,6 +75,19 @@ func NewTracer(config *config.Config) (*Tracer, error) {
 		}
 	}
 
+	var httpMonitor *http.Monitor
+	httpMonitor = nil
+	if config.EnableHTTPMonitoring {
+		httpMonitor, err = http.NewMonitor(config)
+		if err != nil {
+			return nil, err
+		}
+		err = httpMonitor.Start()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	tr := &Tracer{
 		config:          config,
 		driverInterface: di,
@@ -82,6 +97,7 @@ func NewTracer(config *config.Config) (*Tracer, error) {
 		activeBuffer:    network.NewConnectionBuffer(defaultBufferSize),
 		closedBuffer:    network.NewConnectionBuffer(defaultBufferSize),
 		reverseDNS:      reverseDNS,
+		httpMonitor:     httpMonitor,
 		sourceExcludes:  network.ParseConnectionFilters(config.ExcludedSourceConnections),
 		destExcludes:    network.ParseConnectionFilters(config.ExcludedDestinationConnections),
 	}
@@ -93,6 +109,7 @@ func NewTracer(config *config.Config) (*Tracer, error) {
 func (t *Tracer) Stop() {
 	close(t.stopChan)
 	t.reverseDNS.Close()
+	t.httpMonitor.Stop()
 	err := t.driverInterface.Close()
 	if err != nil {
 		log.Errorf("error closing driver interface: %s", err)
@@ -120,14 +137,14 @@ func (t *Tracer) GetActiveConnections(clientID string) (*network.Connections, er
 	// check for expired clients in the state
 	t.state.RemoveExpiredClients(time.Now())
 
-	delta := t.state.GetDelta(clientID, uint64(time.Now().Nanosecond()), activeConnStats, closedConnStats, t.reverseDNS.GetDNSStats(), nil)
+	delta := t.state.GetDelta(clientID, uint64(time.Now().Nanosecond()), activeConnStats, closedConnStats, t.reverseDNS.GetDNSStats(), t.httpMonitor.GetHTTPStats())
 	conns := delta.Connections
 	var ips []util.Address
 	for _, conn := range delta.Connections {
 		ips = append(ips, conn.Source, conn.Dest)
 	}
 	names := t.reverseDNS.Resolve(ips)
-	return &network.Connections{Conns: conns, DNS: names}, nil
+	return &network.Connections{Conns: conns, HTTP: delta.HTTP, DNS: names}, nil
 }
 
 // GetStats returns a map of statistics about the current tracer's internal state

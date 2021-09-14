@@ -42,6 +42,9 @@ const (
 
 	// StatsHandle has no filter set and is used to pull total stats from the driver
 	StatsHandle HandleType = "Stats"
+
+	// TODO
+	HTTPHandle HandleType = "HTTP"
 )
 
 // Handle struct stores the windows handle for the driver as well as information about what type of filter is set
@@ -101,6 +104,23 @@ func (dh *Handle) SetDataFilters(filters []FilterDefinition) error {
 	for _, filter := range filters {
 		err := windows.DeviceIoControl(dh.Handle,
 			SetDataFilterIOCTL,
+			(*byte)(unsafe.Pointer(&filter)),
+			uint32(unsafe.Sizeof(filter)),
+			(*byte)(unsafe.Pointer(&id)),
+			uint32(unsafe.Sizeof(id)), nil, nil)
+		if err != nil {
+			return fmt.Errorf("failed to set filter: %v", err)
+		}
+	}
+	return nil
+}
+
+// SetHTTPFilters installs the provided filters for http messages
+func (dh *Handle) SetHTTPFilters(filters []FilterDefinition) error {
+	var id int64
+	for _, filter := range filters {
+		err := windows.DeviceIoControl(dh.Handle,
+			SetHTTPFilterIOCTL,
 			(*byte)(unsafe.Pointer(&filter)),
 			uint32(unsafe.Sizeof(filter)),
 			(*byte)(unsafe.Pointer(&id)),

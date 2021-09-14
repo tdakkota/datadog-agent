@@ -54,6 +54,11 @@ typedef unsigned char       uint8_t;
                                               METHOD_BUFFERED,\
                                               FILE_ANY_ACCESS)
 
+#define DDNPMDRIVER_IOCTL_SET_HTTP_FILTER CTL_CODE(FILE_DEVICE_NETWORK, \
+                                              0x807, \
+                                              METHOD_BUFFERED,\
+                                              FILE_ANY_ACCESS)
+
 #pragma pack(1)
 
 /*!
