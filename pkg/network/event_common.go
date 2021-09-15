@@ -111,6 +111,7 @@ type Connections struct {
 	ConnTelemetry               *ConnectionsTelemetry
 	CompilationTelemetryByAsset map[string]RuntimeCompilationTelemetry
 	HTTP                        map[http.Key]http.RequestStats
+	Tags                        []string
 }
 
 // ConnectionsTelemetry stores telemetry from the system probe related to connections collection
@@ -192,6 +193,7 @@ type ConnectionStats struct {
 	DNSFailureLatencySum        uint64
 	DNSCountByRcode             map[uint32]uint32
 	DNSStatsByDomainByQueryType map[*intern.Value]map[dns.QueryType]dns.Stats
+	Tags                        []uint32
 
 	Via *Via
 
@@ -247,6 +249,8 @@ func (c ConnectionStats) ByteKey(buf []byte) ([]byte, error) {
 	n += c.Dest.WriteTo(buf[n:])   // 4 or 16 bytes
 	return buf[:n], nil
 }
+
+type Tags []string
 
 const keyFmt = "p:%d|src:%s:%d|dst:%s:%d|f:%d|t:%d"
 

@@ -82,6 +82,7 @@ func FormatConnection(
 	c.DnsCountByRcode = conn.DNSCountByRcode
 	c.LastTcpEstablished = conn.LastTCPEstablished
 	c.LastTcpClosed = conn.LastTCPClosed
+	c.Tags = conn.Tags
 
 	if dnsWithQueryType {
 		c.DnsStatsByDomain = make(map[int32]*model.DNSStats)

@@ -300,7 +300,7 @@ func (t *Tracer) GetActiveConnections(clientID string) (*network.Connections, er
 	defer t.bufferLock.Unlock()
 	log.Tracef("GetActiveConnections clientID=%s", clientID)
 
-	latestConns, latestTime, err := t.getConnections(t.buffer[:0])
+	latestConns, latestTime, tags, err := t.getConnections(t.buffer[:0])
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving connections: %s", err)
 	}
@@ -335,6 +335,7 @@ func (t *Tracer) GetActiveConnections(clientID string) (*network.Connections, er
 		HTTP:                        delta.HTTP,
 		ConnTelemetry:               ctm,
 		CompilationTelemetryByAsset: rctm,
+		Tags:                        tags,
 	}, nil
 }
 
@@ -407,17 +408,17 @@ func (t *Tracer) getRuntimeCompilationTelemetry() map[string]network.RuntimeComp
 
 // getConnections returns all the active connections in the ebpf maps along with the latest timestamp.  It takes
 // a reusable buffer for appending the active connections so that this doesn't continuously allocate
-func (t *Tracer) getConnections(buffer []network.ConnectionStats) ([]network.ConnectionStats, uint64, error) {
+func (t *Tracer) getConnections(buffer []network.ConnectionStats) ([]network.ConnectionStats, uint64, network.Tags, error) {
 	cachedConntrack := newCachedConntrack(t.config.ProcRoot, netlink.NewConntrack, 128)
 	defer func() { _ = cachedConntrack.Close() }()
 
 	latestTime, err := ddebpf.NowNanoseconds()
 	if err != nil {
-		return nil, 0, fmt.Errorf("error retrieving latest timestamp: %s", err)
+		return nil, 0, nil, fmt.Errorf("error retrieving latest timestamp: %s", err)
 	}
 
 	var expired []*network.ConnectionStats
-	active, err := t.ebpfTracer.GetConnections(buffer, func(c *network.ConnectionStats) bool {
+	active, tags, err := t.ebpfTracer.GetConnections(buffer, func(c *network.ConnectionStats) bool {
 		if t.connectionExpired(c, uint64(latestTime), cachedConntrack) {
 			expired = append(expired, c)
 			if c.Type == network.TCP {
@@ -434,7 +435,7 @@ func (t *Tracer) getConnections(buffer []network.ConnectionStats) ([]network.Con
 		return true
 	})
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 
 	for i, conn := range active {
@@ -466,9 +467,9 @@ func (t *Tracer) getConnections(buffer []network.ConnectionStats) ([]network.Con
 
 	latestTime, err = ddebpf.NowNanoseconds()
 	if err != nil {
-		return nil, 0, fmt.Errorf("error retrieving latest timestamp: %s", err)
+		return nil, 0, nil, fmt.Errorf("error retrieving latest timestamp: %s", err)
 	}
-	return active, uint64(latestTime), nil
+	return active, uint64(latestTime), tags, nil
 }
 
 func (t *Tracer) removeEntries(entries []*network.ConnectionStats) {
@@ -569,11 +570,11 @@ func (t *Tracer) DebugNetworkState(clientID string) (map[string]interface{}, err
 
 // DebugNetworkMaps returns all connections stored in the BPF maps without modifications from network state
 func (t *Tracer) DebugNetworkMaps() (*network.Connections, error) {
-	latestConns, _, err := t.getConnections(make([]network.ConnectionStats, 0))
+	latestConns, _, tags, err := t.getConnections(make([]network.ConnectionStats, 0))
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving connections: %s", err)
 	}
-	return &network.Connections{Conns: latestConns}, nil
+	return &network.Connections{Conns: latestConns, Tags: tags}, nil
 }
 
 // connectionExpired returns true if the passed in connection has expired

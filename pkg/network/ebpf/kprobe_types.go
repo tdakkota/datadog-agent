@@ -5,6 +5,7 @@ package ebpf
 /*
 #include "./c/tracer.h"
 #include "./c/tcp_states.h"
+#include "./c/tags-types.h"
 #include "./c/prebuilt/offset-guess.h"
 */
 import "C"
@@ -16,6 +17,7 @@ type Conn C.conn_t
 type Batch C.batch_t
 type Telemetry C.telemetry_t
 type PortBinding C.port_binding_t
+type Tags C.tags_t
 
 type TCPState uint8
 
@@ -40,3 +42,7 @@ const (
 )
 
 const BatchSize = C.CONN_CLOSED_BATCH_SIZE
+
+var (
+	StaticTagsStrings = [...]string{"NoTags", "HTTP", "LIBSSL"}
+)

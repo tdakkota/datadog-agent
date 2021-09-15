@@ -93,6 +93,7 @@ func modelConnections(conns *network.Connections) *model.Connections {
 	payload.ConnTelemetry = FormatConnTelemetry(conns.ConnTelemetry)
 	payload.CompilationTelemetryByAsset = FormatCompilationTelemetry(conns.CompilationTelemetryByAsset)
 	payload.Routes = routes
+	payload.Tags = conns.Tags
 
 	return payload
 }

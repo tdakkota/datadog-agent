@@ -37,6 +37,7 @@ type kprobeTracer struct {
 	flushPending chan chan []network.ConnectionStats
 	conns        *ebpf.Map
 	tcpStats     *ebpf.Map
+	tags         *ebpf.Map
 	config       *config.Config
 
 	// Telemetry
@@ -66,6 +67,7 @@ func New(config *config.Config, constants []manager.ConstantEditor) (connection.
 			string(probes.UdpPortBindingsMap): {Type: ebpf.Hash, MaxEntries: uint32(config.MaxTrackedConnections), EditorFlag: manager.EditMaxEntries},
 			string(probes.SockByPidFDMap):     {Type: ebpf.Hash, MaxEntries: uint32(config.MaxTrackedConnections), EditorFlag: manager.EditMaxEntries},
 			string(probes.PidFDBySockMap):     {Type: ebpf.Hash, MaxEntries: uint32(config.MaxTrackedConnections), EditorFlag: manager.EditMaxEntries},
+			string(probes.TagsMap):            {Type: ebpf.Hash, MaxEntries: uint32(config.MaxTrackedConnections), EditorFlag: manager.EditMaxEntries},
 		},
 		ConstantEditors: constants,
 	}
@@ -148,6 +150,12 @@ func New(config *config.Config, constants []manager.ConstantEditor) (connection.
 		return nil, fmt.Errorf("error retrieving the bpf %s map: %s", probes.TcpStatsMap, err)
 	}
 
+	tr.tags, _, err = m.GetMap(string(probes.TagsMap))
+	if err != nil {
+		tr.Stop()
+		return nil, fmt.Errorf("error retrieving the bpf %s map: %s", probes.TagsMap, err)
+	}
+
 	tr.batchManager, err = tr.initPerfPolling(tr.perfHandler)
 	if err != nil {
 		tr.Stop()
@@ -190,23 +198,25 @@ func (t *kprobeTracer) GetMap(name string) *ebpf.Map {
 	}
 }
 
-func (t *kprobeTracer) GetConnections(buffer []network.ConnectionStats, filter func(*network.ConnectionStats) bool) ([]network.ConnectionStats, error) {
+func (t *kprobeTracer) GetConnections(buffer []network.ConnectionStats, filter func(*network.ConnectionStats) bool) ([]network.ConnectionStats, network.Tags, error) {
 	// Iterate through all key-value pairs in map
 	key, stats := &netebpf.ConnTuple{}, &netebpf.ConnStats{}
 	seen := make(map[netebpf.ConnTuple]struct{})
+	tagsSet := newTagsSet(t.tags)
 	entries := t.conns.IterateFrom(unsafe.Pointer(&netebpf.ConnTuple{}))
 	for entries.Next(unsafe.Pointer(key), unsafe.Pointer(stats)) {
 		conn := connStats(key, stats, t.getTCPStats(key, seen))
 		if filter != nil && filter(&conn) {
+			conn.Tags = append(conn.Tags, tagsSet.getIndexes(key)...)
 			buffer = append(buffer, conn)
 		}
 	}
 
 	if err := entries.Err(); err != nil {
-		return nil, fmt.Errorf("unable to iterate connection map: %s", err)
+		return nil, nil, fmt.Errorf("unable to iterate connection map: %s", err)
 	}
 
-	return buffer, nil
+	return buffer, tagsSet.getTagsStrings(), nil
 }
 
 func (t *kprobeTracer) FlushPending() []network.ConnectionStats {
@@ -431,6 +441,7 @@ func connStats(t *netebpf.ConnTuple, s *netebpf.ConnStats, tcpStats *netebpf.TCP
 		MonotonicRecvPackets: s.Recv_packets,
 		LastUpdateEpoch:      s.Timestamp,
 		IsAssured:            s.IsAssured(),
+		Tags:                 getStaticTagsFromConnStats(s),
 	}
 
 	if t.Type() == netebpf.TCP {
