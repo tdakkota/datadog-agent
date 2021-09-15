@@ -58,29 +58,25 @@ func (c *collector) Start(_ context.Context, store *workloadmeta.Store) error {
 }
 
 func (c *collector) Pull(ctx context.Context) error {
-	events := []workloadmeta.Event{}
-
 	updatedPods, err := c.watcher.PullChanges(ctx)
 	if err != nil {
 		return err
 	}
 
-	events = append(events, c.parsePods(updatedPods)...)
+	events := c.parsePods(updatedPods)
 
 	if time.Now().Sub(c.lastExpire) >= c.expireFreq {
-		expiredIDs, err := c.watcher.Expire()
-		if err != nil {
-			return err
+		var expiredIDs []string
+		expiredIDs, err = c.watcher.Expire()
+		if err == nil {
+			events = append(events, c.parseExpires(expiredIDs)...)
+			c.lastExpire = time.Now()
 		}
-
-		events = append(events, c.parseExpires(expiredIDs)...)
-
-		c.lastExpire = time.Now()
 	}
 
 	c.store.Notify(events)
 
-	return nil
+	return err
 }
 
 func (c *collector) parsePods(pods []*kubelet.Pod) []workloadmeta.Event {

@@ -63,9 +63,12 @@ func (c *WorkloadMetaCollector) processEvents(evBundle workloadmeta.EventBundle)
 	// happen :D since the workloadmeta will be the only collector in the
 	// tagger in the end, this can be turned into a sync call to
 	// processTagInfo
+	log.Info("ready to notify tagger")
 	c.out <- tagInfos
+	log.Info("tagger notified")
 
 	close(evBundle.Ch)
+	log.Info("ch closed")
 }
 
 func (c *WorkloadMetaCollector) handleKubePod(ev workloadmeta.Event) []*TagInfo {
@@ -78,30 +81,7 @@ func (c *WorkloadMetaCollector) handleKubePod(ev workloadmeta.Event) []*TagInfo 
 	tags.AddLow(kubernetes.NamespaceTagName, pod.Namespace)
 	tags.AddLow("pod_phase", strings.ToLower(pod.Phase))
 
-	for name, value := range pod.Labels {
-		switch name {
-		case kubernetes.EnvTagLabelKey:
-			tags.AddStandard(tagKeyEnv, value)
-		case kubernetes.VersionTagLabelKey:
-			tags.AddStandard(tagKeyVersion, value)
-		case kubernetes.ServiceTagLabelKey:
-			tags.AddStandard(tagKeyService, value)
-		case kubernetes.KubeAppNameLabelKey:
-			tags.AddLow(tagKeyKubeAppName, value)
-		case kubernetes.KubeAppInstanceLabelKey:
-			tags.AddLow(tagKeyKubeAppInstance, value)
-		case kubernetes.KubeAppVersionLabelKey:
-			tags.AddLow(tagKeyKubeAppVersion, value)
-		case kubernetes.KubeAppComponentLabelKey:
-			tags.AddLow(tagKeyKubeAppComponent, value)
-		case kubernetes.KubeAppPartOfLabelKey:
-			tags.AddLow(tagKeyKubeAppPartOf, value)
-		case kubernetes.KubeAppManagedByLabelKey:
-			tags.AddLow(tagKeyKubeAppManagedBy, value)
-		}
-
-		utils.AddMetadataAsTags(name, value, c.labelsAsTags, c.globLabels, tags)
-	}
+	c.extractTagsFromPodLabels(pod, tags)
 
 	for name, value := range pod.Annotations {
 		utils.AddMetadataAsTags(name, value, c.annotationsAsTags, c.globAnnotations, tags)
@@ -127,45 +107,7 @@ func (c *WorkloadMetaCollector) handleKubePod(ev workloadmeta.Event) []*TagInfo 
 		tags.AddLow(kubernetes.OwnerRefKindTagName, strings.ToLower(owner.Kind))
 		tags.AddOrchestrator(kubernetes.OwnerRefNameTagName, owner.Name)
 
-		switch owner.Kind {
-		case kubernetes.DeploymentKind:
-			tags.AddLow(kubernetes.DeploymentTagName, owner.Name)
-
-		case kubernetes.DaemonSetKind:
-			tags.AddLow(kubernetes.DaemonSetTagName, owner.Name)
-
-		case kubernetes.ReplicationControllerKind:
-			tags.AddLow(kubernetes.ReplicationControllerTagName, owner.Name)
-
-		case kubernetes.StatefulSetKind:
-			tags.AddLow(kubernetes.StatefulSetTagName, owner.Name)
-			for _, pvc := range pod.PersistentVolumeClaimNames {
-				if pvc != "" {
-					tags.AddLow("persistentvolumeclaim", pvc)
-				}
-			}
-
-		case kubernetes.JobKind:
-			cronjob := kubernetes.ParseCronJobForJob(owner.Name)
-			if cronjob != "" {
-				tags.AddOrchestrator(kubernetes.JobTagName, owner.Name)
-				tags.AddLow(kubernetes.CronJobTagName, cronjob)
-			} else {
-				tags.AddLow(kubernetes.JobTagName, owner.Name)
-			}
-
-		case kubernetes.ReplicaSetKind:
-			deployment := kubernetes.ParseDeploymentForReplicaSet(owner.Name)
-			if len(deployment) > 0 {
-				tags.AddLow(kubernetes.DeploymentTagName, deployment)
-			}
-			tags.AddLow(kubernetes.ReplicaSetTagName, owner.Name)
-
-		case "":
-
-		default:
-			log.Debugf("unknown owner kind %q for pod %q", owner.Kind, pod.Name)
-		}
+		c.extractTagsFromPodOwner(pod, owner, tags)
 	}
 
 	low, orch, high, standard := tags.Compute()
@@ -186,51 +128,7 @@ func (c *WorkloadMetaCollector) handleKubePod(ev workloadmeta.Event) []*TagInfo 
 		}
 
 		cTags := tags.Copy()
-		cTags.AddLow("kube_container_name", container.Name)
-		cTags.AddLow("image_id", container.Image.ID)
-		cTags.AddHigh("container_id", container.ID)
-		if container.Name != "" && pod.Name != "" {
-			cTags.AddHigh("display_container_name", fmt.Sprintf("%s_%s", container.Name, pod.Name))
-		}
-
-		// Enrich with standard tags from labels for this container if present
-		standardTagKeys := []string{tagKeyEnv, tagKeyVersion, tagKeyService}
-		for _, key := range standardTagKeys {
-			label := fmt.Sprintf(podStandardLabelPrefix+"%s.%s", container.Name, key)
-			if value, ok := pod.Labels[label]; ok {
-				cTags.AddStandard(key, value)
-			}
-		}
-
-		// Enrich with standard tags from environment variables
-		standardEnvKeys := map[string]string{
-			envVarEnv:     tagKeyEnv,
-			envVarVersion: tagKeyVersion,
-			envVarService: tagKeyService,
-		}
-		for key, tag := range standardEnvKeys {
-			if value, ok := container.EnvVars[key]; ok && value != "" {
-				cTags.AddStandard(tag, value)
-			}
-		}
-
-		// container-specific tags provided through pod annotation
-		containerTags, found := extractTagsFromMap(
-			fmt.Sprintf(podContainerTagsAnnotationFormat, container.Name),
-			pod.Annotations,
-		)
-		if found {
-			for tagName, values := range containerTags {
-				for _, val := range values {
-					cTags.AddAuto(tagName, val)
-				}
-			}
-		}
-
-		image := container.Image
-		cTags.AddLow("image_name", image.Name)
-		cTags.AddLow("short_image", image.ShortName)
-		cTags.AddLow("image_tag", image.Tag)
+		c.extractTagsFromPodContainer(pod, container, cTags)
 
 		low, orch, high, standard := cTags.Compute()
 		tagInfos = append(tagInfos, &TagInfo{
@@ -244,6 +142,123 @@ func (c *WorkloadMetaCollector) handleKubePod(ev workloadmeta.Event) []*TagInfo 
 	}
 
 	return tagInfos
+}
+
+func (c *WorkloadMetaCollector) extractTagsFromPodLabels(pod workloadmeta.KubernetesPod, tags *utils.TagList) {
+	for name, value := range pod.Labels {
+		switch name {
+		case kubernetes.EnvTagLabelKey:
+			tags.AddStandard(tagKeyEnv, value)
+		case kubernetes.VersionTagLabelKey:
+			tags.AddStandard(tagKeyVersion, value)
+		case kubernetes.ServiceTagLabelKey:
+			tags.AddStandard(tagKeyService, value)
+		case kubernetes.KubeAppNameLabelKey:
+			tags.AddLow(tagKeyKubeAppName, value)
+		case kubernetes.KubeAppInstanceLabelKey:
+			tags.AddLow(tagKeyKubeAppInstance, value)
+		case kubernetes.KubeAppVersionLabelKey:
+			tags.AddLow(tagKeyKubeAppVersion, value)
+		case kubernetes.KubeAppComponentLabelKey:
+			tags.AddLow(tagKeyKubeAppComponent, value)
+		case kubernetes.KubeAppPartOfLabelKey:
+			tags.AddLow(tagKeyKubeAppPartOf, value)
+		case kubernetes.KubeAppManagedByLabelKey:
+			tags.AddLow(tagKeyKubeAppManagedBy, value)
+		}
+
+		utils.AddMetadataAsTags(name, value, c.labelsAsTags, c.globLabels, tags)
+	}
+}
+
+func (c *WorkloadMetaCollector) extractTagsFromPodOwner(pod workloadmeta.KubernetesPod, owner workloadmeta.KubernetesPodOwner, tags *utils.TagList) {
+	switch owner.Kind {
+	case kubernetes.DeploymentKind:
+		tags.AddLow(kubernetes.DeploymentTagName, owner.Name)
+
+	case kubernetes.DaemonSetKind:
+		tags.AddLow(kubernetes.DaemonSetTagName, owner.Name)
+
+	case kubernetes.ReplicationControllerKind:
+		tags.AddLow(kubernetes.ReplicationControllerTagName, owner.Name)
+
+	case kubernetes.StatefulSetKind:
+		tags.AddLow(kubernetes.StatefulSetTagName, owner.Name)
+		for _, pvc := range pod.PersistentVolumeClaimNames {
+			if pvc != "" {
+				tags.AddLow("persistentvolumeclaim", pvc)
+			}
+		}
+
+	case kubernetes.JobKind:
+		cronjob := kubernetes.ParseCronJobForJob(owner.Name)
+		if cronjob != "" {
+			tags.AddOrchestrator(kubernetes.JobTagName, owner.Name)
+			tags.AddLow(kubernetes.CronJobTagName, cronjob)
+		} else {
+			tags.AddLow(kubernetes.JobTagName, owner.Name)
+		}
+
+	case kubernetes.ReplicaSetKind:
+		deployment := kubernetes.ParseDeploymentForReplicaSet(owner.Name)
+		if len(deployment) > 0 {
+			tags.AddLow(kubernetes.DeploymentTagName, deployment)
+		}
+		tags.AddLow(kubernetes.ReplicaSetTagName, owner.Name)
+
+	case "":
+
+	default:
+		log.Debugf("unknown owner kind %q for pod %q", owner.Kind, pod.Name)
+	}
+}
+
+func (c *WorkloadMetaCollector) extractTagsFromPodContainer(pod workloadmeta.KubernetesPod, container workloadmeta.Container, tags *utils.TagList) {
+	tags.AddLow("kube_container_name", container.Name)
+	tags.AddLow("image_id", container.Image.ID)
+	tags.AddHigh("container_id", container.ID)
+	if container.Name != "" && pod.Name != "" {
+		tags.AddHigh("display_container_name", fmt.Sprintf("%s_%s", container.Name, pod.Name))
+	}
+
+	// Enrich with standard tags from labels for this container if present
+	standardTagKeys := []string{tagKeyEnv, tagKeyVersion, tagKeyService}
+	for _, key := range standardTagKeys {
+		label := fmt.Sprintf(podStandardLabelPrefix+"%s.%s", container.Name, key)
+		if value, ok := pod.Labels[label]; ok {
+			tags.AddStandard(key, value)
+		}
+	}
+
+	// Enrich with standard tags from environment variables
+	standardEnvKeys := map[string]string{
+		envVarEnv:     tagKeyEnv,
+		envVarVersion: tagKeyVersion,
+		envVarService: tagKeyService,
+	}
+	for key, tag := range standardEnvKeys {
+		if value, ok := container.EnvVars[key]; ok && value != "" {
+			tags.AddStandard(tag, value)
+		}
+	}
+
+	// container-specific tags provided through pod annotation
+	containerTags, found := extractTagsFromMap(
+		fmt.Sprintf(podContainerTagsAnnotationFormat, container.Name),
+		pod.Annotations,
+	)
+	if found {
+		for tagName, values := range containerTags {
+			for _, val := range values {
+				tags.AddAuto(tagName, val)
+			}
+		}
+	}
+
+	image := container.Image
+	tags.AddLow("image_name", image.Name)
+	tags.AddLow("short_image", image.ShortName)
+	tags.AddLow("image_tag", image.Tag)
 }
 
 func buildTaggerEntityID(entityID workloadmeta.EntityID) string {

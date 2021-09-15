@@ -65,9 +65,12 @@ func (c *WorkloadMetaCollector) Stream() error {
 
 	ch := c.store.Subscribe(name, nil)
 
+	log.Infof("starting to listen...")
+
 	for {
 		select {
 		case evBundle := <-ch:
+			log.Infof("got bundle")
 			c.processEvents(evBundle)
 
 		case <-health.C:

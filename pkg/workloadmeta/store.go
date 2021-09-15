@@ -21,7 +21,7 @@ var globalStore *Store
 const (
 	retryCollectorInterval = 30 * time.Second
 	pullCollectorInterval  = 5 * time.Second
-	eventBundleChTimeout   = 1 * time.Second
+	eventBundleChTimeout   = 30 * time.Second
 	eventChBufferSize      = 50
 )
 
@@ -123,27 +123,22 @@ func (s *Store) Subscribe(name string, filter *Filter) chan EventBundle {
 	// ch needs to be buffered since we'll send it events before the
 	// subscriber has the chance to start receiving from it. if it's
 	// unbuffered, it'll deadlock.
-	ch := make(chan EventBundle, 1)
+	sub := subscriber{
+		name:   name,
+		ch:     make(chan EventBundle, 1),
+		filter: filter,
+	}
 
 	s.subscribersMut.Lock()
-	s.subscribers = append(s.subscribers, subscriber{
-		name:   name,
-		ch:     ch,
-		filter: filter,
-	})
+	s.subscribers = append(s.subscribers, sub)
 	s.subscribersMut.Unlock()
 
-	// lock the store for reading only, as subscribers might need to read
-	// it for related entities (such as a pod's containers) while they
-	// process an event.
+	var events []Event
+
 	s.storeMut.RLock()
-	defer s.storeMut.RUnlock()
-
 	if len(s.store) > 0 {
-		evs := []Event{}
-
 		for kind, entitiesOfKind := range s.store {
-			if !filter.MatchKind(kind) {
+			if !sub.filter.MatchKind(kind) {
 				continue
 			}
 
@@ -153,20 +148,22 @@ func (s *Store) Subscribe(name string, filter *Filter) chan EventBundle {
 			// not matter.
 
 			for _, entity := range entitiesOfKind {
-				evs = append(evs, Event{
+				events = append(events, Event{
+					// TODO(juliogreff): insert Source here
+					// after the above TODO has been
+					// addressed.
 					Type:   EventTypeSet,
 					Entity: entity,
 				})
 			}
 		}
-
-		notifyChannel(name, ch, EventBundle{
-			Events: evs,
-			Ch:     make(chan struct{}),
-		})
 	}
+	s.storeMut.RUnlock()
 
-	return ch
+	log.Infof("notify %q from subscribe", sub.name)
+	notifyChannel(sub.name, sub.ch, events)
+
+	return sub.ch
 }
 
 // Unsubscribe ends a subscription to entity events and closes its channel.
@@ -304,10 +301,13 @@ func (s *Store) handleEvents(evs []Event) {
 	// process an event.
 	s.storeMut.Unlock()
 
+	// copy the list of subscribers to hold locks for as little as
+	// possible, since notifyChannel is a blocking operation.
 	s.subscribersMut.RLock()
-	defer s.subscribersMut.RUnlock()
+	subscribers := append([]subscriber{}, s.subscribers...)
+	s.subscribersMut.RUnlock()
 
-	for _, sub := range s.subscribers {
+	for _, sub := range subscribers {
 		filter := sub.filter
 		filteredEvents := make([]Event, 0, len(evs))
 
@@ -317,10 +317,8 @@ func (s *Store) handleEvents(evs []Event) {
 			}
 		}
 
-		notifyChannel(sub.name, sub.ch, EventBundle{
-			Events: filteredEvents,
-			Ch:     make(chan struct{}),
-		})
+		log.Infof("notify %q from event", sub.name)
+		notifyChannel(sub.name, sub.ch, filteredEvents)
 	}
 }
 
@@ -341,16 +339,28 @@ func (s *Store) getEntityByKind(kind Kind, id string) (Entity, error) {
 	return entity, nil
 }
 
-func notifyChannel(name string, ch chan EventBundle, bundle EventBundle) {
+func notifyChannel(name string, ch chan EventBundle, events []Event) {
+	if len(events) == 0 {
+		return
+	}
+
+	bundle := EventBundle{
+		Ch:     make(chan struct{}),
+		Events: events,
+	}
+
+	log.Infof("notify %q", name)
 	ch <- bundle
+	log.Infof("notify %q: done", name)
 
 	timer := time.NewTimer(eventBundleChTimeout)
 
 	select {
 	case <-bundle.Ch:
+		log.Infof("notify %q: ack", name)
 		timer.Stop()
 	case <-timer.C:
-		log.Warnf("collector %q did not close the event bundle channel in time, continuing with downstream collectors", name)
+		log.Warnf("collector %q did not close the event bundle channel in time, continuing with downstream collectors. bundle dump: %+v", name, bundle)
 	}
 }
 

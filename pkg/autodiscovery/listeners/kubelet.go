@@ -78,10 +78,14 @@ func (l *KubeletListener) Listen(newSvc chan<- Service, delSvc chan<- Service) {
 	health := health.RegisterLiveness(name)
 	firstRun := true
 
+	log.Info("kubelet listener initialized successfully")
+
 	go func() {
+		log.Info("listening to events")
 		for {
 			select {
 			case evBundle := <-ch:
+				log.Info("got bundle")
 				l.processEvents(evBundle, firstRun)
 				firstRun = false
 
@@ -107,6 +111,12 @@ func (l *KubeletListener) Stop() {
 }
 
 func (l *KubeletListener) processEvents(evBundle workloadmeta.EventBundle, firstRun bool) {
+	// close the bundle channel asap since there are no downstream
+	// collectors that depend on AD having up to date data.
+	log.Info("will close ch")
+	close(evBundle.Ch)
+	log.Info("closed ch")
+
 	for _, ev := range evBundle.Events {
 		entity := ev.Entity
 		entityID := entity.GetID()
@@ -127,8 +137,6 @@ func (l *KubeletListener) processEvents(evBundle workloadmeta.EventBundle, first
 			log.Errorf("cannot handle event of type %d", ev.Type)
 		}
 	}
-
-	close(evBundle.Ch)
 }
 
 func (l *KubeletListener) processPod(pod workloadmeta.KubernetesPod, firstRun bool) {
