@@ -29,6 +29,8 @@ const (
 	defaultClosedChannelSize = 500
 )
 
+type TagFunc func(tag *TagsSet, conn *network.ConnectionStats)
+
 type kprobeTracer struct {
 	m            *manager.Manager
 	perfHandler  *ddebpf.PerfHandler
@@ -38,6 +40,7 @@ type kprobeTracer struct {
 	conns        *ebpf.Map
 	tcpStats     *ebpf.Map
 	tags         *ebpf.Map
+	tagFunc      TagFunc
 	config       *config.Config
 
 	// Telemetry
@@ -198,6 +201,17 @@ func (t *kprobeTracer) GetMap(name string) *ebpf.Map {
 	}
 }
 
+// RegisterConnectionsTagFunc register a callback that will be called on selected ConnectionStats from GetConnections()
+// the callback can add tag to the connections, like :
+//   callback(tags, conn) {
+//     if conn.DPort == 80 {
+//       tags.Tag(conn, "scheme:http:client")
+//     }
+//   }
+func (t *kprobeTracer) RegisterConnectionsTagFunc(callback TagFunc) {
+	t.tagFunc = callback
+}
+
 func (t *kprobeTracer) GetConnections(buffer []network.ConnectionStats, filter func(*network.ConnectionStats) bool) ([]network.ConnectionStats, network.Tags, error) {
 	// Iterate through all key-value pairs in map
 	key, stats := &netebpf.ConnTuple{}, &netebpf.ConnStats{}
@@ -208,6 +222,9 @@ func (t *kprobeTracer) GetConnections(buffer []network.ConnectionStats, filter f
 		conn := connStats(key, stats, t.getTCPStats(key, seen))
 		if filter != nil && filter(&conn) {
 			conn.Tags = append(conn.Tags, tagsSet.getIndexes(key)...)
+			if t.tagFunc != nil {
+				t.tagFunc(tagsSet, &conn)
+			}
 			buffer = append(buffer, conn)
 		}
 	}

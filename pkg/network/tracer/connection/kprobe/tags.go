@@ -11,21 +11,25 @@ import (
 	"github.com/DataDog/ebpf"
 )
 
-type tagsSet struct {
+type TagsSet struct {
 	m            *ebpf.Map
 	set          map[string]uint32
 	nextTagValue uint32
 }
 
-func newTagsSet(m *ebpf.Map) *tagsSet {
-	return &tagsSet{
+func newTagsSet(m *ebpf.Map) *TagsSet {
+	return &TagsSet{
 		m:            m,
 		set:          make(map[string]uint32),
 		nextTagValue: uint32(len(netebpf.StaticTagsStrings)),
 	}
 }
 
-func (ts *tagsSet) getTagsStrings() (strs network.Tags) {
+func (ts *TagsSet) Tag(conn *network.ConnectionStats, tag string) {
+	conn.Tags = append(conn.Tags, ts.addTag(tag))
+}
+
+func (ts *TagsSet) getTagsStrings() (strs network.Tags) {
 	max := uint32(len(netebpf.StaticTagsStrings) - 1)
 	rset := make(map[uint32]string)
 	for k, v := range ts.set {
@@ -49,8 +53,18 @@ func (ts *tagsSet) getTagsStrings() (strs network.Tags) {
 	return strs
 }
 
+func (ts *TagsSet) addTag(tag string) (v uint32) {
+	if v, found := ts.set[tag]; found {
+		return v
+	}
+	v = ts.nextTagValue
+	ts.set[tag] = v
+	ts.nextTagValue++
+	return v
+}
+
 // getIndexes lookup on ConnTuple, update the internal map and return the tags indexes
-func (ts *tagsSet) getIndexes(tuple *netebpf.ConnTuple) (uintTags []uint32) {
+func (ts *TagsSet) getIndexes(tuple *netebpf.ConnTuple) (uintTags []uint32) {
 	tags := new(netebpf.Tags)
 	err := ts.m.Lookup(unsafe.Pointer(tuple), unsafe.Pointer(tags))
 	if err == nil {
@@ -66,14 +80,7 @@ func (ts *tagsSet) getIndexes(tuple *netebpf.ConnTuple) (uintTags []uint32) {
 		if len(t) == 0 {
 			continue
 		}
-		tag := string(t)
-		if v, found := ts.set[tag]; found {
-			uintTags = append(uintTags, v)
-			continue
-		}
-		ts.set[tag] = ts.nextTagValue
-		uintTags = append(uintTags, ts.nextTagValue)
-		ts.nextTagValue++
+		uintTags = append(uintTags, ts.addTag(string(t)))
 	}
 	return uintTags
 }
