@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/DataDog/datadog-agent/pkg/config"
@@ -26,6 +25,7 @@ type proxyEndpointsConfig struct {
 	additionalEndpointsConfig string // config entry for adding additional, can be empty
 	urlTemplate               string // template to build intake URL based on SITE config
 	defaultURL                string
+	additionalDirector        func(req *http.Request)
 }
 
 func (pec *proxyEndpointsConfig) proxyRoundTripper(client http.RoundTripper, apiKey string) (http.RoundTripper, error) {
@@ -70,7 +70,7 @@ func (pec *proxyEndpointsConfig) proxyEndpoints(apiKey string) (urls []*url.URL,
 	return urls, apiKeys, nil
 }
 
-// forwardingProxyHandler returns a new HTTP handler which will proxy requests to the profiling intakes.
+// forwardingProxyHandler returns a new HTTP handler which will proxy requests to the configured intakes.
 // If the main intake URL can not be computed because of config, the returned handler will always
 // return http.StatusInternalServerError along with a clarification.
 func (r *HTTPReceiver) forwardingProxyHandler(pec *proxyEndpointsConfig) http.Handler {
@@ -111,17 +111,13 @@ type proxyMultiTransport struct {
 	baseTag string
 }
 
-func (m *proxyMultiTransport) overrideTarget(r *http.Request, targetUrl *url.URL, apiKey string) error {
-	newTargetUrl := *targetUrl
-	newPath := r.URL.Path
-	if idx := strings.Index(newPath, "/"); idx != -1 {
-		newPath = newPath[idx:]
-	}
+func (m *proxyMultiTransport) roundTrip(req *http.Request, target *url.URL, apiKey string) (*http.Response, error) {
+	req.Host = target.Host
+	req.URL.Host = target.Host
+	req.URL.Scheme = target.Scheme
 
-	r.Host = targetUrl.Host
-	r.URL = &newTargetUrl
-	r.Header.Set("DD-API-KEY", apiKey)
-	return nil
+	req.Header.Set("DD-API-KEY", apiKey)
+	return m.rt.RoundTrip(req)
 }
 
 // newForwardingProxy creates an http.ReverseProxy which can forward requests to
@@ -141,7 +137,12 @@ func (pec *proxyEndpointsConfig) newForwardingProxy(transport http.RoundTripper,
 
 		req.Header.Set("DD-Agent-Hostname", agentHostname)
 		req.Header.Set("DD-Agent-Env", agentEnv)
+
+		if pec.additionalDirector != nil {
+			pec.additionalDirector(req)
+		}
 	}
+
 	logger := logutil.NewThrottled(5, 10*time.Second) // limit to 5 messages every 10 seconds
 	return &httputil.ReverseProxy{
 		Director:  director,
@@ -158,8 +159,7 @@ func (m *proxyMultiTransport) RoundTrip(req *http.Request) (*http.Response, erro
 	}()
 
 	if len(m.targets) == 1 {
-		m.overrideTarget(req, m.targets[0], m.keys[0])
-		return m.rt.RoundTrip(req)
+		return m.roundTrip(req, m.targets[0], m.keys[0])
 	}
 	slurp, err := ioutil.ReadAll(req.Body)
 	if err != nil {
@@ -169,18 +169,18 @@ func (m *proxyMultiTransport) RoundTrip(req *http.Request) (*http.Response, erro
 		rresp *http.Response
 		rerr  error
 	)
-	for i, u := range m.targets {
+	for i, url := range m.targets {
+		key := m.keys[i]
 		newreq := req.Clone(req.Context())
 		newreq.Body = ioutil.NopCloser(bytes.NewReader(slurp))
-		m.overrideTarget(newreq, u, m.keys[i])
 		if i == 0 {
 			// given the way we construct the list of targets the main endpoint
 			// will be the first one called, we return its response and error
-			rresp, rerr = m.rt.RoundTrip(newreq)
+			rresp, rerr = m.roundTrip(newreq, url, key)
 			continue
 		}
 
-		if resp, err := m.rt.RoundTrip(newreq); err == nil {
+		if resp, err := m.roundTrip(newreq, url, key); err == nil {
 			// we discard responses for all subsequent requests
 			io.Copy(ioutil.Discard, resp.Body)
 			resp.Body.Close()

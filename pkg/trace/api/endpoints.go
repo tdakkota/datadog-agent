@@ -77,8 +77,10 @@ var endpoints = []endpoint{
 		Handler: func(r *HTTPReceiver) http.Handler { return r.profileProxyHandler() },
 	},
 	{
-		Pattern: "intake.apm-telemetry.datadoghq.com/",
-		Handler: func(r *HTTPReceiver) http.Handler { return r.forwardingProxyHandler(&telemetryProxyEndpointsConfig) },
+		Pattern: "/telemetry/proxy/",
+		Handler: func(r *HTTPReceiver) http.Handler {
+			return http.StripPrefix("/telemetry/proxy", r.forwardingProxyHandler(&telemetryProxyEndpointsConfig))
+		},
 	},
 	{
 		Pattern: "/v0.6/stats",
