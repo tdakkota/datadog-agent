@@ -12,11 +12,11 @@ import (
 
 	"github.com/DataDog/datadog-agent/pkg/network"
 	"github.com/DataDog/datadog-agent/pkg/network/config"
-	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 	ct "github.com/florianl/go-conntrack"
 	"github.com/hashicorp/golang-lru/simplelru"
 	"golang.org/x/sys/unix"
+	"inet.af/netaddr"
 )
 
 const (
@@ -33,10 +33,10 @@ type Conntracker interface {
 }
 
 type connKey struct {
-	srcIP   util.Address
+	srcIP   netaddr.IP
 	srcPort uint16
 
-	dstIP   util.Address
+	dstIP   netaddr.IP
 	dstPort uint16
 
 	// the transport protocol of the connection, using the same values as specified in the agent payload.
@@ -421,18 +421,25 @@ func formatIPTranslation(tuple *ct.IPTuple) *network.IPTranslation {
 	srcPort := *tuple.Proto.SrcPort
 	dstPort := *tuple.Proto.DstPort
 
-	return &network.IPTranslation{
-		ReplSrcIP:   util.AddressFromNetIP(srcIP),
-		ReplDstIP:   util.AddressFromNetIP(dstIP),
+	trans := &network.IPTranslation{
 		ReplSrcPort: srcPort,
 		ReplDstPort: dstPort,
 	}
+	trans.ReplSrcIP, _ = netaddr.FromStdIP(srcIP)
+	trans.ReplDstIP, _ = netaddr.FromStdIP(dstIP)
+	return trans
 }
 
 func formatKey(tuple *ct.IPTuple) (k connKey, ok bool) {
 	ok = true
-	k.srcIP = util.AddressFromNetIP(*tuple.Src)
-	k.dstIP = util.AddressFromNetIP(*tuple.Dst)
+	k.srcIP, ok = netaddr.FromStdIP(*tuple.Src)
+	if !ok {
+		return
+	}
+	k.dstIP, ok = netaddr.FromStdIP(*tuple.Dst)
+	if !ok {
+		return
+	}
 	k.srcPort = *tuple.Proto.SrcPort
 	k.dstPort = *tuple.Proto.DstPort
 

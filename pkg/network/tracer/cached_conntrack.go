@@ -78,7 +78,7 @@ func (cache *cachedConntrack) exists(c *network.ConnectionStats, netns uint32, p
 		util.IPBufferPool.Put(dstBuf)
 	}()
 
-	srcAddr, dstAddr := util.NetIPFromAddress(c.Source, srcBuf), util.NetIPFromAddress(c.Dest, dstBuf)
+	srcAddr, dstAddr := util.NetIPFromIP(c.Source, srcBuf), util.NetIPFromIP(c.Dest, dstBuf)
 	srcPort, dstPort := c.SPort, c.DPort
 
 	conn := netlink.Con{

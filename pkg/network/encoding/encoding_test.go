@@ -11,13 +11,13 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/network"
 	"github.com/DataDog/datadog-agent/pkg/network/dns"
 	"github.com/DataDog/datadog-agent/pkg/network/http"
-	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/DataDog/sketches-go/ddsketch"
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go4.org/intern"
+	"inet.af/netaddr"
 )
 
 var originalConfig = config.Datadog
@@ -110,8 +110,8 @@ func TestSerialization(t *testing.T) {
 	in := &network.Connections{
 		Conns: []network.ConnectionStats{
 			{
-				Source:               util.AddressFromString("10.1.1.1"),
-				Dest:                 util.AddressFromString("10.2.2.2"),
+				Source:               netaddr.MustParseIP("10.1.1.1"),
+				Dest:                 netaddr.MustParseIP("10.2.2.2"),
 				MonotonicSentBytes:   1,
 				LastSentBytes:        2,
 				MonotonicRecvBytes:   100,
@@ -126,8 +126,8 @@ func TestSerialization(t *testing.T) {
 				SPort:                1000,
 				DPort:                9000,
 				IPTranslation: &network.IPTranslation{
-					ReplSrcIP:   util.AddressFromString("20.1.1.1"),
-					ReplDstIP:   util.AddressFromString("20.1.1.1"),
+					ReplSrcIP:   netaddr.MustParseIP("20.1.1.1"),
+					ReplDstIP:   netaddr.MustParseIP("20.1.1.1"),
 					ReplSrcPort: 40,
 					ReplDstPort: 80,
 				},
@@ -154,13 +154,13 @@ func TestSerialization(t *testing.T) {
 				},
 			},
 		},
-		DNS: map[util.Address][]string{
-			util.AddressFromString("172.217.12.145"): {"golang.org"},
+		DNS: map[netaddr.IP][]string{
+			netaddr.MustParseIP("172.217.12.145"): {"golang.org"},
 		},
 		HTTP: map[http.Key]http.RequestStats{
 			http.NewKey(
-				util.AddressFromString("20.1.1.1"),
-				util.AddressFromString("20.1.1.1"),
+				netaddr.MustParseIP("20.1.1.1"),
+				netaddr.MustParseIP("20.1.1.1"),
 				40,
 				80,
 				"/testpath",
@@ -374,8 +374,8 @@ func TestFormatHTTPStatsByPath(t *testing.T) {
 	verifyQuantile(t, latencies, 0.5, 3.5)
 
 	key := http.NewKey(
-		util.AddressFromString("10.1.1.1"),
-		util.AddressFromString("10.2.2.2"),
+		netaddr.MustParseIP("10.1.1.1"),
+		netaddr.MustParseIP("10.2.2.2"),
 		1000,
 		9000,
 		"/testpath",
@@ -417,7 +417,7 @@ func TestHTTPSerializationWithLocalhostTraffic(t *testing.T) {
 	var (
 		clientPort = uint16(52800)
 		serverPort = uint16(8080)
-		localhost  = util.AddressFromString("127.0.0.1")
+		localhost  = netaddr.MustParseIP("127.0.0.1")
 	)
 
 	var httpReqStats http.RequestStats
@@ -499,8 +499,8 @@ func TestPooledObjectGarbageRegression(t *testing.T) {
 	// This test ensures that no garbage data is accidentally
 	// left on pooled Connection objects used during serialization
 	httpKey := http.NewKey(
-		util.AddressFromString("10.0.15.1"),
-		util.AddressFromString("172.217.10.45"),
+		netaddr.MustParseIP("10.0.15.1"),
+		netaddr.MustParseIP("172.217.10.45"),
 		60000,
 		8080,
 		"",
@@ -510,9 +510,9 @@ func TestPooledObjectGarbageRegression(t *testing.T) {
 	in := &network.Connections{
 		Conns: []network.ConnectionStats{
 			{
-				Source: util.AddressFromString("10.0.15.1"),
+				Source: netaddr.MustParseIP("10.0.15.1"),
 				SPort:  uint16(60000),
-				Dest:   util.AddressFromString("172.217.10.45"),
+				Dest:   netaddr.MustParseIP("172.217.10.45"),
 				DPort:  uint16(8080),
 			},
 		},

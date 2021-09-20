@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/DataDog/datadog-agent/pkg/network"
-	"github.com/DataDog/datadog-agent/pkg/process/util"
 	ct "github.com/florianl/go-conntrack"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"inet.af/netaddr"
 )
 
 func TestIsNat(t *testing.T) {
@@ -100,14 +100,24 @@ func TestRegisterNonNat(t *testing.T) {
 	rt.register(c)
 	translation := rt.GetTranslationForConn(
 		network.ConnectionStats{
-			Source: util.AddressFromString("10.0.0.0"),
+			Source: netaddr.MustParseIP("10.0.0.0"),
 			SPort:  8080,
-			Dest:   util.AddressFromString("50.30.40.10"),
+			Dest:   netaddr.MustParseIP("50.30.40.10"),
 			DPort:  12345,
 			Type:   network.TCP,
 		},
 	)
 	assert.Nil(t, translation)
+}
+
+func TestIPCompare(t *testing.T) {
+	type A struct {
+		ip netaddr.IP
+	}
+
+	x := A{netaddr.MustParseIP("127.0.0.1")}
+	y := A{netaddr.MustParseIP("127.0.0.1")}
+	assert.True(t, x == y)
 }
 
 func TestRegisterNat(t *testing.T) {
@@ -117,26 +127,26 @@ func TestRegisterNat(t *testing.T) {
 	rt.register(c)
 	translation := rt.GetTranslationForConn(
 		network.ConnectionStats{
-			Source: util.AddressFromString("10.0.0.0"),
+			Source: netaddr.MustParseIP("10.0.0.0"),
 			SPort:  12345,
-			Dest:   util.AddressFromString("50.30.40.10"),
+			Dest:   netaddr.MustParseIP("50.30.40.10"),
 			DPort:  80,
 			Type:   network.TCP,
 		},
 	)
 	assert.NotNil(t, translation)
 	assert.Equal(t, &network.IPTranslation{
-		ReplSrcIP:   util.AddressFromString("20.0.0.0"),
-		ReplDstIP:   util.AddressFromString("10.0.0.0"),
+		ReplSrcIP:   netaddr.MustParseIP("20.0.0.0"),
+		ReplDstIP:   netaddr.MustParseIP("10.0.0.0"),
 		ReplSrcPort: 80,
 		ReplDstPort: 12345,
 	}, translation)
 
 	udpTranslation := rt.GetTranslationForConn(
 		network.ConnectionStats{
-			Source: util.AddressFromString("10.0.0.0"),
+			Source: netaddr.MustParseIP("10.0.0.0"),
 			SPort:  12345,
-			Dest:   util.AddressFromString("50.30.40.10"),
+			Dest:   netaddr.MustParseIP("50.30.40.10"),
 			DPort:  80,
 			Type:   network.UDP,
 		},
@@ -152,26 +162,26 @@ func TestRegisterNatUDP(t *testing.T) {
 	rt.register(c)
 	translation := rt.GetTranslationForConn(
 		network.ConnectionStats{
-			Source: util.AddressFromString("10.0.0.0"),
+			Source: netaddr.MustParseIP("10.0.0.0"),
 			SPort:  12345,
-			Dest:   util.AddressFromString("50.30.40.10"),
+			Dest:   netaddr.MustParseIP("50.30.40.10"),
 			DPort:  80,
 			Type:   network.UDP,
 		},
 	)
 	assert.NotNil(t, translation)
 	assert.Equal(t, &network.IPTranslation{
-		ReplSrcIP:   util.AddressFromString("20.0.0.0"),
-		ReplDstIP:   util.AddressFromString("10.0.0.0"),
+		ReplSrcIP:   netaddr.MustParseIP("20.0.0.0"),
+		ReplDstIP:   netaddr.MustParseIP("10.0.0.0"),
 		ReplSrcPort: 80,
 		ReplDstPort: 12345,
 	}, translation)
 
 	translation = rt.GetTranslationForConn(
 		network.ConnectionStats{
-			Source: util.AddressFromString("10.0.0.0"),
+			Source: netaddr.MustParseIP("10.0.0.0"),
 			SPort:  12345,
-			Dest:   util.AddressFromString("50.30.40.10"),
+			Dest:   netaddr.MustParseIP("50.30.40.10"),
 			DPort:  80,
 			Type:   network.TCP,
 		},
@@ -184,9 +194,9 @@ func TestTooManyEntries(t *testing.T) {
 
 	rt.register(makeTranslatedConn(net.ParseIP("10.0.0.0"), net.ParseIP("20.0.0.0"), net.ParseIP("50.30.40.10"), 6, 12345, 80, 80))
 	tr := rt.GetTranslationForConn(network.ConnectionStats{
-		Source: util.AddressFromString("10.0.0.0"),
+		Source: netaddr.MustParseIP("10.0.0.0"),
 		SPort:  12345,
-		Dest:   util.AddressFromString("50.30.40.10"),
+		Dest:   netaddr.MustParseIP("50.30.40.10"),
 		DPort:  80,
 		Type:   network.TCP,
 	})
@@ -197,9 +207,9 @@ func TestTooManyEntries(t *testing.T) {
 	rt.register(makeTranslatedConn(net.ParseIP("10.0.0.1"), net.ParseIP("20.0.0.1"), net.ParseIP("50.30.40.20"), 6, 12345, 80, 80))
 	// old entry should be gone
 	tr = rt.GetTranslationForConn(network.ConnectionStats{
-		Source: util.AddressFromString("10.0.0.0"),
+		Source: netaddr.MustParseIP("10.0.0.0"),
 		SPort:  12345,
-		Dest:   util.AddressFromString("50.30.40.10"),
+		Dest:   netaddr.MustParseIP("50.30.40.10"),
 		DPort:  80,
 		Type:   network.TCP,
 	})
@@ -207,9 +217,9 @@ func TestTooManyEntries(t *testing.T) {
 
 	// check new entry
 	tr = rt.GetTranslationForConn(network.ConnectionStats{
-		Source: util.AddressFromString("10.0.0.1"),
+		Source: netaddr.MustParseIP("10.0.0.1"),
 		SPort:  12345,
-		Dest:   util.AddressFromString("50.30.40.20"),
+		Dest:   netaddr.MustParseIP("50.30.40.20"),
 		DPort:  80,
 		Type:   network.TCP,
 	})
@@ -272,9 +282,9 @@ func TestConntrackCacheAdd(t *testing.T) {
 		}{
 			{
 				k: connKey{
-					srcIP:   util.AddressFromString("1.1.1.1"),
+					srcIP:   netaddr.MustParseIP("1.1.1.1"),
 					srcPort: 12345,
-					dstIP:   util.AddressFromString("3.3.3.3"),
+					dstIP:   netaddr.MustParseIP("3.3.3.3"),
 					dstPort: 80,
 				},
 				expectedReplSrcIP:   "2.2.2.2",
@@ -282,9 +292,9 @@ func TestConntrackCacheAdd(t *testing.T) {
 			},
 			{
 				k: connKey{
-					srcIP:   util.AddressFromString("2.2.2.2"),
+					srcIP:   netaddr.MustParseIP("2.2.2.2"),
 					srcPort: 80,
-					dstIP:   util.AddressFromString("1.1.1.1"),
+					dstIP:   netaddr.MustParseIP("1.1.1.1"),
 					dstPort: 12345,
 				},
 				expectedReplSrcIP:   "1.1.1.1",
@@ -350,9 +360,9 @@ func TestConntrackCacheAdd(t *testing.T) {
 		}{
 			{
 				k: connKey{
-					srcIP:   util.AddressFromString("1.1.1.1"),
+					srcIP:   netaddr.MustParseIP("1.1.1.1"),
 					srcPort: 12345,
-					dstIP:   util.AddressFromString("3.3.3.3"),
+					dstIP:   netaddr.MustParseIP("3.3.3.3"),
 					dstPort: 80,
 				},
 				expectedReplSrcIP:   "4.4.4.4",
@@ -360,9 +370,9 @@ func TestConntrackCacheAdd(t *testing.T) {
 			},
 			{
 				k: connKey{
-					srcIP:   util.AddressFromString("4.4.4.4"),
+					srcIP:   netaddr.MustParseIP("4.4.4.4"),
 					srcPort: 80,
-					dstIP:   util.AddressFromString("1.1.1.1"),
+					dstIP:   netaddr.MustParseIP("1.1.1.1"),
 					dstPort: 12345,
 				},
 				expectedReplSrcIP:   "1.1.1.1",
@@ -370,9 +380,9 @@ func TestConntrackCacheAdd(t *testing.T) {
 			},
 			{
 				k: connKey{
-					srcIP:   util.AddressFromString("2.2.2.2"),
+					srcIP:   netaddr.MustParseIP("2.2.2.2"),
 					srcPort: 80,
-					dstIP:   util.AddressFromString("1.1.1.1"),
+					dstIP:   netaddr.MustParseIP("1.1.1.1"),
 					dstPort: 12345,
 				},
 				expectedReplSrcIP:   "1.1.1.1",

@@ -3,11 +3,10 @@
 package network
 
 import (
-	"net"
 	"syscall"
 
 	"github.com/DataDog/datadog-agent/pkg/network/driver"
-	"github.com/DataDog/datadog-agent/pkg/process/util"
+	"inet.af/netaddr"
 )
 
 func connFamily(addressFamily uint16) ConnectionFamily {
@@ -44,14 +43,12 @@ func isTCPFlowEstablished(flags uint32) bool {
 	return (flags & driver.TCPFlowEstablishedMask) == driver.TCPFlowEstablishedMask
 }
 
-func convertV4Addr(addr [16]uint8) util.Address {
-	// We only read the first 4 bytes for v4 address
-	return util.V4AddressFromBytes(addr[:net.IPv4len])
+func convertV4Addr(addr [16]uint8) netaddr.IP {
+	return netaddr.IPv4(addr[0], addr[1], addr[2], addr[3])
 }
 
-func convertV6Addr(addr [16]uint8) util.Address {
-	// We read all 16 bytes for v6 address
-	return util.V6AddressFromBytes(addr[:net.IPv6len])
+func convertV6Addr(addr [16]uint8) netaddr.IP {
+	return netaddr.IPv6Raw(addr)
 }
 
 // Monotonic values include retransmits and headers, while transport does not. We default to using transport
@@ -67,8 +64,8 @@ func monotonicOrTransportBytes(useMonotonicCounts bool, monotonic uint64, transp
 func FlowToConnStat(cs *ConnectionStats, flow *driver.PerFlowData, enableMonotonicCounts bool) {
 	var (
 		family         ConnectionFamily
-		srcAddr        util.Address
-		dstAddr        util.Address
+		srcAddr        netaddr.IP
+		dstAddr        netaddr.IP
 		connectionType ConnectionType
 	)
 	family = connFamily(flow.AddressFamily)

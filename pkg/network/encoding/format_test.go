@@ -7,9 +7,9 @@ import (
 	model "github.com/DataDog/agent-payload/process"
 	"github.com/DataDog/datadog-agent/pkg/network"
 	"github.com/DataDog/datadog-agent/pkg/network/http"
-	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"inet.af/netaddr"
 )
 
 func TestFormatRouteIdx(t *testing.T) {
@@ -82,7 +82,7 @@ func TestFormatHTTPStats(t *testing.T) {
 	var (
 		clientPort = uint16(52800)
 		serverPort = uint16(8080)
-		localhost  = util.AddressFromString("127.0.0.1")
+		localhost  = netaddr.MustParseIP("127.0.0.1")
 	)
 
 	httpKey1 := http.NewKey(

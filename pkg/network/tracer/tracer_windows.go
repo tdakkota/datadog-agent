@@ -13,8 +13,8 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/network"
 	"github.com/DataDog/datadog-agent/pkg/network/config"
 	"github.com/DataDog/datadog-agent/pkg/network/dns"
-	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
+	"inet.af/netaddr"
 )
 
 const (
@@ -122,7 +122,7 @@ func (t *Tracer) GetActiveConnections(clientID string) (*network.Connections, er
 
 	delta := t.state.GetDelta(clientID, uint64(time.Now().Nanosecond()), activeConnStats, closedConnStats, t.reverseDNS.GetDNSStats(), nil)
 	conns := delta.Connections
-	var ips []util.Address
+	var ips []netaddr.IP
 	for _, conn := range delta.Connections {
 		ips = append(ips, conn.Source, conn.Dest)
 	}

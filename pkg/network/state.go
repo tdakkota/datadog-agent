@@ -7,9 +7,9 @@ import (
 
 	"github.com/DataDog/datadog-agent/pkg/network/dns"
 	"github.com/DataDog/datadog-agent/pkg/network/http"
-	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 	"go4.org/intern"
+	"inet.af/netaddr"
 )
 
 var (
@@ -714,7 +714,7 @@ func (ns *networkState) DumpState(clientID string) map[string]interface{} {
 
 func (ns *networkState) determineConnectionIntraHost(connections []ConnectionStats) {
 	type connKey struct {
-		Address util.Address
+		Address netaddr.IP
 		Port    uint16
 		Type    ConnectionType
 	}

@@ -8,9 +8,9 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/network"
 	"github.com/DataDog/datadog-agent/pkg/network/dns"
 	"github.com/DataDog/datadog-agent/pkg/network/http"
-	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/gogo/protobuf/proto"
 	"go4.org/intern"
+	"inet.af/netaddr"
 )
 
 const maxRoutes = math.MaxInt32
@@ -33,9 +33,9 @@ type RouteIdx struct {
 	Route model.Route
 }
 
-type ipCache map[util.Address]string
+type ipCache map[netaddr.IP]string
 
-func (ipc ipCache) Get(addr util.Address) string {
+func (ipc ipCache) Get(addr netaddr.IP) string {
 	if v, ok := ipc[addr]; ok {
 		return v
 	}
@@ -107,7 +107,7 @@ var dnsPool = sync.Pool{
 }
 
 // FormatDNS converts a map[util.Address][]string to a map using IPs string representation
-func FormatDNS(dns map[util.Address][]string, ipc ipCache) map[string]*model.DNSEntry {
+func FormatDNS(dns map[netaddr.IP][]string, ipc ipCache) map[string]*model.DNSEntry {
 	if dns == nil {
 		return nil
 	}
@@ -250,8 +250,8 @@ func returnToPool(c *model.Connections) {
 	connsPool.Put(c)
 }
 
-func formatAddr(addr util.Address, port uint16, ipc ipCache) *model.Addr {
-	if addr == nil {
+func formatAddr(addr netaddr.IP, port uint16, ipc ipCache) *model.Addr {
+	if addr.IsZero() {
 		return nil
 	}
 

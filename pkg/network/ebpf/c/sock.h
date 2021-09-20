@@ -191,15 +191,15 @@ static __always_inline int read_conn_tuple_partial(conn_tuple_t * t, struct sock
     // Retrieve addresses
     if (check_family(skp, AF_INET)) {
         t->metadata |= CONN_V4;
-        if (t->saddr_l == 0) {
-            bpf_probe_read(&t->saddr_l, sizeof(u32), ((char*)skp) + offset_saddr());
+        if (!is_ipv4_set(&t->saddr)) {
+            read_ipv4_sock_offset(&t->saddr, skp, offset_saddr());
         }
-        if (t->daddr_l == 0) {
-            bpf_probe_read(&t->daddr_l, sizeof(u32), ((char*)skp) + offset_daddr());
+        if (!is_ipv4_set(&t->daddr)) {
+            read_ipv4_sock_offset(&t->daddr, skp, offset_daddr());
         }
 
-        if (!t->saddr_l || !t->daddr_l) {
-            log_debug("ERR(read_conn_tuple.v4): src or dst addr not set src=%d, dst=%d\n", t->saddr_l, t->daddr_l);
+        if (!is_ipv4_set(&t->saddr) || !is_ipv4_set(&t->daddr)) {
+            log_debug("ERR(read_conn_tuple.v4): src or dst addr not set src=%x, dst=%x\n", t->saddr.s6_addr32[3], t->daddr.s6_addr32[3]);
             return 0;
         }
     } else if (check_family(skp, AF_INET6)) {
@@ -207,40 +207,27 @@ static __always_inline int read_conn_tuple_partial(conn_tuple_t * t, struct sock
             return 0;
         }
 
-        if (t->saddr_h == 0) {
-            bpf_probe_read(&t->saddr_h, sizeof(t->saddr_h), ((char*)skp) + offset_daddr_ipv6() + 2 * sizeof(u64));
+        if (!is_ipv6_set(&t->saddr)) {
+            read_in6_addr(&t->saddr, (struct in6_addr *)(((char*)skp) + offset_daddr_ipv6() + 2 * sizeof(u64)));
         }
-        if (t->saddr_l == 0) {
-            bpf_probe_read(&t->saddr_l, sizeof(t->saddr_l), ((char*)skp) + offset_daddr_ipv6() + 3 * sizeof(u64));
-        }
-        if (t->daddr_h == 0) {
-            bpf_probe_read(&t->daddr_h, sizeof(t->daddr_h), ((char*)skp) + offset_daddr_ipv6());
-        }
-        if (t->daddr_l == 0) {
-            bpf_probe_read(&t->daddr_l, sizeof(t->daddr_l), ((char*)skp) + offset_daddr_ipv6() + sizeof(u64));
+        if (!is_ipv6_set(&t->daddr)) {
+            read_in6_addr(&t->daddr, (struct in6_addr *)(((char*)skp) + offset_daddr_ipv6()));
         }
 
         // We can only pass 4 args to bpf_trace_printk
         // so split those 2 statements to be able to log everything
-        if (!(t->saddr_h || t->saddr_l)) {
-            log_debug("ERR(read_conn_tuple.v6): src addr not set: type=%d, saddr_l=%d, saddr_h=%d\n",
-                      type, t->saddr_l, t->saddr_h);
+        if (!is_ipv6_set(&t->saddr)) {
+            log_debug("ERR(read_conn_tuple.v6): src addr not set: type=%d\n", type);
             return 0;
         }
-
-        if (!(t->daddr_h || t->daddr_l)) {
-            log_debug("ERR(read_conn_tuple.v6): dst addr not set: type=%d, daddr_l=%d, daddr_h=%d\n",
-                      type, t->daddr_l, t->daddr_h);
+        if (!is_ipv6_set(&t->daddr)) {
+            log_debug("ERR(read_conn_tuple.v6): dst addr not set: type=%d\n", type);
             return 0;
         }
 
         // Check if we can map IPv6 to IPv4
-        if (is_ipv4_mapped_ipv6(t->saddr_h, t->saddr_l, t->daddr_h, t->daddr_l)) {
+        if (is_ipv4_mapped_ipv6(&t->saddr) || is_ipv4_mapped_ipv6(&t->daddr)) {
             t->metadata |= CONN_V4;
-            t->saddr_h = 0;
-            t->daddr_h = 0;
-            t->saddr_l = (__u32)(t->saddr_l >> 32);
-            t->daddr_l = (__u32)(t->daddr_l >> 32);
         } else {
             t->metadata |= CONN_V6;
         }

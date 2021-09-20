@@ -9,6 +9,7 @@ package ebpf
 */
 import "C"
 
+type Inet6Addr C.struct_in6_addr
 type ConnTuple C.conn_tuple_t
 type TCPStats C.tcp_stats_t
 type ConnStats C.conn_stats_ts_t

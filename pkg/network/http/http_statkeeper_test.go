@@ -8,18 +8,36 @@ import (
 	"strconv"
 	"testing"
 	"time"
+	"unsafe"
 
-	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/stretchr/testify/assert"
+	"inet.af/netaddr"
 )
+
+var (
+	nativeEndian binary.ByteOrder
+)
+
+// In lack of binary.NativeEndian ...
+func init() {
+	var i int32 = 0x01020304
+	u := unsafe.Pointer(&i)
+	pb := (*byte)(u)
+	b := *pb
+	if b == 0x04 {
+		nativeEndian = binary.LittleEndian
+	} else {
+		nativeEndian = binary.BigEndian
+	}
+}
 
 func TestProcessHTTPTransactions(t *testing.T) {
 	sk := newHTTPStatkeeper(1000, newTelemetry())
 	txs := make([]httpTX, 100)
 
-	sourceIP := util.AddressFromString("1.1.1.1")
+	sourceIP := netaddr.MustParseIP("1.1.1.1")
 	sourcePort := 1234
-	destIP := util.AddressFromString("2.2.2.2")
+	destIP := netaddr.MustParseIP("2.2.2.2")
 	destPort := 8080
 
 	const numPaths = 10
@@ -55,7 +73,7 @@ func TestProcessHTTPTransactions(t *testing.T) {
 	}
 }
 
-func generateIPv4HTTPTransaction(source util.Address, dest util.Address, sourcePort int, destPort int, path string, code int, latency time.Duration) httpTX {
+func generateIPv4HTTPTransaction(source netaddr.IP, dest netaddr.IP, sourcePort int, destPort int, path string, code int, latency time.Duration) httpTX {
 	var tx httpTX
 
 	reqFragment := fmt.Sprintf("GET %s HTTP/1.1\nHost: example.com\nUser-Agent: example-browser/1.0", path)
@@ -64,9 +82,20 @@ func generateIPv4HTTPTransaction(source util.Address, dest util.Address, sourceP
 	tx.response_last_seen = tx.request_started + latencyNS
 	tx.response_status_code = _Ctype_ushort(code)
 	tx.request_fragment = requestFragment([]byte(reqFragment))
-	tx.tup.saddr_l = _Ctype_ulonglong(binary.LittleEndian.Uint32(source.Bytes()))
+	if source.Is6() {
+		tx.tup.saddr.in6_u = source.As16()
+	} else {
+		b := source.As4()
+		copy(tx.tup.saddr.in6_u[12:], b[:])
+	}
 	tx.tup.sport = _Ctype_ushort(sourcePort)
-	tx.tup.daddr_l = _Ctype_ulonglong(binary.LittleEndian.Uint32(dest.Bytes()))
+	if dest.Is6() {
+		tx.tup.daddr.in6_u = dest.As16()
+	} else {
+		b := dest.As4()
+		copy(tx.tup.daddr.in6_u[12:], b[:])
+	}
+
 	tx.tup.dport = _Ctype_ushort(destPort)
 	tx.tup.metadata = 1
 
@@ -76,8 +105,8 @@ func generateIPv4HTTPTransaction(source util.Address, dest util.Address, sourceP
 func BenchmarkProcessSameConn(b *testing.B) {
 	sk := newHTTPStatkeeper(1000, newTelemetry())
 	tx := generateIPv4HTTPTransaction(
-		util.AddressFromString("1.1.1.1"),
-		util.AddressFromString("2.2.2.2"),
+		netaddr.MustParseIP("1.1.1.1"),
+		netaddr.MustParseIP("2.2.2.2"),
 		1234,
 		8080,
 		"foobar",

@@ -25,12 +25,12 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/network/tracer/connection"
 	"github.com/DataDog/datadog-agent/pkg/network/tracer/connection/kprobe"
 	"github.com/DataDog/datadog-agent/pkg/process/procutil"
-	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/DataDog/datadog-agent/pkg/util/kernel"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 	"github.com/DataDog/ebpf"
 	"github.com/DataDog/ebpf/manager"
 	"golang.org/x/sys/unix"
+	"inet.af/netaddr"
 )
 
 const defaultUDPConnTimeoutNanoSeconds = uint64(time.Duration(120) * time.Second)
@@ -297,7 +297,7 @@ func (t *Tracer) GetActiveConnections(clientID string) (*network.Connections, er
 	t.activeBuffer.Reset()
 	t.closedBuffer.Reset()
 
-	ips := make([]util.Address, 0, len(delta.Connections)*2)
+	ips := make([]netaddr.IP, 0, len(delta.Connections)*2)
 	for _, conn := range delta.Connections {
 		ips = append(ips, conn.Source, conn.Dest)
 	}

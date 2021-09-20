@@ -9,7 +9,6 @@ import (
 	ddconfig "github.com/DataDog/datadog-agent/pkg/config"
 	"github.com/DataDog/datadog-agent/pkg/network"
 	"github.com/DataDog/datadog-agent/pkg/network/config"
-	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/DataDog/datadog-agent/pkg/util/ec2"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 	"github.com/hashicorp/golang-lru/simplelru"
@@ -76,11 +75,9 @@ func (g *gatewayLookup) Lookup(cs *network.ConnectionStats) *network.Via {
 		return nil
 	}
 
-	buf := util.IPBufferPool.Get().([]byte)
-	defer util.IPBufferPool.Put(buf)
 	// if there is no gateway, we don't need to add subnet info
 	// for gateway resolution in the backend
-	if util.NetIPFromAddress(r.Gateway, buf).IsUnspecified() {
+	if r.Gateway.IsUnspecified() || r.Gateway.IsZero() {
 		return nil
 	}
 

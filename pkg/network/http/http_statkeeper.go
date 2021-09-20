@@ -2,7 +2,11 @@
 
 package http
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+
+	"inet.af/netaddr"
+)
 
 type httpStatKeeper struct {
 	stats      map[Key]RequestStats
@@ -68,9 +72,8 @@ func (h *httpStatKeeper) add(tx httpTX) {
 // parts of the transactions are joined here by src port
 func (h *httpStatKeeper) handleIncomplete(tx httpTX) {
 	key := Key{
-		SrcIPHigh: uint64(tx.tup.saddr_h),
-		SrcIPLow:  uint64(tx.tup.saddr_l),
-		SrcPort:   uint16(tx.tup.sport),
+		SrcIP:   netaddr.IPFrom16(tx.tup.saddr.in6_u),
+		SrcPort: uint16(tx.tup.sport),
 	}
 
 	otherHalf, ok := h.incomplete[key]
@@ -101,14 +104,12 @@ func (h *httpStatKeeper) newKey(tx httpTX) Key {
 	pathString := h.intern(path)
 
 	return Key{
-		SrcIPHigh: uint64(tx.tup.saddr_h),
-		SrcIPLow:  uint64(tx.tup.saddr_l),
-		SrcPort:   uint16(tx.tup.sport),
-		DstIPHigh: uint64(tx.tup.daddr_h),
-		DstIPLow:  uint64(tx.tup.daddr_l),
-		DstPort:   uint16(tx.tup.dport),
-		Path:      pathString,
-		Method:    Method(tx.request_method),
+		SrcIP:   netaddr.IPFrom16(tx.tup.saddr.in6_u),
+		SrcPort: uint16(tx.tup.sport),
+		DstIP:   netaddr.IPFrom16(tx.tup.daddr.in6_u),
+		DstPort: uint16(tx.tup.dport),
+		Path:    pathString,
+		Method:  Method(tx.request_method),
 	}
 }
 

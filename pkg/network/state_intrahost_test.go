@@ -3,8 +3,8 @@ package network
 import (
 	"testing"
 
-	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/stretchr/testify/assert"
+	"inet.af/netaddr"
 )
 
 func TestDNATIntraHost(t *testing.T) {
@@ -31,8 +31,8 @@ func TestSNATIntraHost(t *testing.T) {
 
 func CreateConnectionStat(source string, dest string, SPort uint16, DPort uint16, connType ConnectionType) ConnectionStats {
 	return ConnectionStats{
-		Source: util.AddressFromString(source),
-		Dest:   util.AddressFromString(dest),
+		Source: netaddr.MustParseIP(source),
+		Dest:   netaddr.MustParseIP(dest),
 		SPort:  SPort,
 		DPort:  DPort,
 		Type:   connType,
@@ -41,8 +41,8 @@ func CreateConnectionStat(source string, dest string, SPort uint16, DPort uint16
 
 func AddIPTranslationToConnection(conn *ConnectionStats, ReplSrcIP string, ReplDstIP string, ReplSrcPort uint16, ReplDstPort uint16) {
 	translation := IPTranslation{
-		ReplSrcIP:   util.AddressFromString(ReplSrcIP),
-		ReplDstIP:   util.AddressFromString(ReplDstIP),
+		ReplSrcIP:   netaddr.MustParseIP(ReplSrcIP),
+		ReplDstIP:   netaddr.MustParseIP(ReplDstIP),
 		ReplSrcPort: ReplSrcPort,
 		ReplDstPort: ReplDstPort,
 	}

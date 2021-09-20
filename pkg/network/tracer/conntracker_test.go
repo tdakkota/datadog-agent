@@ -4,6 +4,7 @@ package tracer
 
 import (
 	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vishvananda/netns"
+	"inet.af/netaddr"
 )
 
 const (
@@ -42,7 +44,7 @@ func TestConntrackers(t *testing.T) {
 				defer netlinktestutil.TeardownDNAT(t)
 				netlinktestutil.SetupDNAT(t)
 
-				testConntracker(t, net.ParseIP("1.1.1.1"), net.ParseIP("2.2.2.2"), ct)
+				testConntracker(t, netaddr.MustParseIP("1.1.1.1"), netaddr.MustParseIP("2.2.2.2"), ct)
 			})
 			t.Run("IPv6", func(t *testing.T) {
 				cfg := config.New()
@@ -53,7 +55,7 @@ func TestConntrackers(t *testing.T) {
 				defer netlinktestutil.TeardownDNAT6(t)
 				netlinktestutil.SetupDNAT6(t)
 
-				testConntracker(t, net.ParseIP("fd00::1"), net.ParseIP("fd00::2"), ct)
+				testConntracker(t, netaddr.MustParseIP("fd00::1"), netaddr.MustParseIP("fd00::2"), ct)
 			})
 			t.Run("cross namespace", func(t *testing.T) {
 				cfg := config.New()
@@ -69,6 +71,9 @@ func TestConntrackers(t *testing.T) {
 }
 
 func setupEBPFConntracker(cfg *config.Config) (netlink.Conntracker, error) {
+	if os.Getenv("BPF_DEBUG") != "" {
+		cfg.BPFDebug = true
+	}
 	cfg.EnableRuntimeCompiler = true
 	cfg.AllowPrecompiledFallback = false
 	return NewEBPFConntracker(cfg)
@@ -82,7 +87,7 @@ func setupNetlinkConntracker(cfg *config.Config) (netlink.Conntracker, error) {
 	return ct, err
 }
 
-func testConntracker(t *testing.T, serverIP, clientIP net.IP, ct netlink.Conntracker) {
+func testConntracker(t *testing.T, serverIP, clientIP netaddr.IP, ct netlink.Conntracker) {
 	srv1 := nettestutil.StartServerTCP(t, serverIP, natPort)
 	defer srv1.Close()
 	srv2 := nettestutil.StartServerTCP(t, serverIP, nonNatPort)
@@ -101,11 +106,13 @@ func testConntracker(t *testing.T, serverIP, clientIP net.IP, ct netlink.Conntra
 		family = network.AFINET6
 	}
 
+	lip, _ := netaddr.FromStdIP(localAddr.IP)
+
 	trans := ct.GetTranslationForConn(
 		network.ConnectionStats{
-			Source: util.AddressFromNetIP(localAddr.IP),
+			Source: lip,
 			SPort:  uint16(localAddr.Port),
-			Dest:   util.AddressFromNetIP(clientIP),
+			Dest:   clientIP,
 			DPort:  uint16(natPort),
 			Type:   network.TCP,
 			Family: family,
@@ -113,7 +120,7 @@ func testConntracker(t *testing.T, serverIP, clientIP net.IP, ct netlink.Conntra
 		},
 	)
 	require.NotNil(t, trans)
-	assert.Equal(t, util.AddressFromNetIP(serverIP), trans.ReplSrcIP)
+	assert.Equal(t, serverIP, trans.ReplSrcIP)
 
 	localAddrUDP := nettestutil.PingUDP(t, clientIP, natPort).LocalAddr().(*net.UDPAddr)
 	time.Sleep(time.Second)
@@ -123,11 +130,12 @@ func testConntracker(t *testing.T, serverIP, clientIP net.IP, ct netlink.Conntra
 		family = network.AFINET6
 	}
 
+	lip, _ = netaddr.FromStdIP(localAddrUDP.IP)
 	trans = ct.GetTranslationForConn(
 		network.ConnectionStats{
-			Source: util.AddressFromNetIP(localAddrUDP.IP),
+			Source: lip,
 			SPort:  uint16(localAddrUDP.Port),
-			Dest:   util.AddressFromNetIP(clientIP),
+			Dest:   clientIP,
 			DPort:  uint16(natPort),
 			Type:   network.UDP,
 			Family: family,
@@ -135,17 +143,18 @@ func testConntracker(t *testing.T, serverIP, clientIP net.IP, ct netlink.Conntra
 		},
 	)
 	require.NotNil(t, trans)
-	assert.Equal(t, util.AddressFromNetIP(serverIP), trans.ReplSrcIP)
+	assert.Equal(t, serverIP, trans.ReplSrcIP)
 
 	// now dial TCP directly
 	localAddr = nettestutil.PingTCP(t, serverIP, nonNatPort).LocalAddr().(*net.TCPAddr)
 	time.Sleep(time.Second)
 
+	lip, _ = netaddr.FromStdIP(localAddr.IP)
 	trans = ct.GetTranslationForConn(
 		network.ConnectionStats{
-			Source: util.AddressFromNetIP(localAddr.IP),
+			Source: lip,
 			SPort:  uint16(localAddr.Port),
-			Dest:   util.AddressFromNetIP(serverIP),
+			Dest:   serverIP,
 			DPort:  uint16(nonNatPort),
 			Type:   network.TCP,
 			NetNS:  curNs,
@@ -158,8 +167,8 @@ func testConntrackerCrossNamespace(t *testing.T, ct netlink.Conntracker) {
 	defer netlinktestutil.TeardownCrossNsDNAT(t)
 	netlinktestutil.SetupCrossNsDNAT(t)
 
-	closer := nettestutil.StartServerTCPNs(t, net.ParseIP("2.2.2.4"), 8080, "test")
-	laddr := nettestutil.PingTCP(t, net.ParseIP("2.2.2.4"), 80).LocalAddr().(*net.TCPAddr)
+	closer := nettestutil.StartServerTCPNs(t, netaddr.MustParseIP("2.2.2.4"), 8080, "test")
+	laddr := nettestutil.PingTCP(t, netaddr.MustParseIP("2.2.2.4"), 80).LocalAddr().(*net.TCPAddr)
 	defer closer.Close()
 
 	testNs, err := netns.GetFromName("test")
@@ -170,11 +179,12 @@ func testConntrackerCrossNamespace(t *testing.T, ct netlink.Conntracker) {
 
 	var trans *network.IPTranslation
 	require.Eventually(t, func() bool {
+		lip, _ := netaddr.FromStdIP(laddr.IP)
 		trans = ct.GetTranslationForConn(
 			network.ConnectionStats{
-				Source: util.AddressFromNetIP(laddr.IP),
+				Source: lip,
 				SPort:  uint16(laddr.Port),
-				Dest:   util.AddressFromString("2.2.2.4"),
+				Dest:   netaddr.MustParseIP("2.2.2.4"),
 				DPort:  uint16(80),
 				Type:   network.TCP,
 				NetNS:  testIno,

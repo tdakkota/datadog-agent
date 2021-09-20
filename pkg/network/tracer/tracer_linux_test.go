@@ -19,20 +19,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DataDog/datadog-agent/pkg/network/netlink"
-	nettestutil "github.com/DataDog/datadog-agent/pkg/network/testutil"
-	"github.com/DataDog/datadog-agent/pkg/process/util"
-
 	ddconfig "github.com/DataDog/datadog-agent/pkg/config"
 	"github.com/DataDog/datadog-agent/pkg/network"
 	"github.com/DataDog/datadog-agent/pkg/network/config"
 	"github.com/DataDog/datadog-agent/pkg/network/config/sysctl"
+	"github.com/DataDog/datadog-agent/pkg/network/netlink"
 	"github.com/DataDog/datadog-agent/pkg/network/testutil"
+	nettestutil "github.com/DataDog/datadog-agent/pkg/network/testutil"
+	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/DataDog/datadog-agent/pkg/util/kernel"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	vnetns "github.com/vishvananda/netns"
+	"inet.af/netaddr"
 )
 
 func dnsSupported(t *testing.T) bool {
@@ -1013,7 +1013,7 @@ func TestDNATIntraHostIntegration(t *testing.T) {
 	conns := getConnections(t, tr).Conns
 	assert.Condition(t, func() bool {
 		for _, c := range conns {
-			if c.Source == util.AddressFromString("1.1.1.1") {
+			if c.Source == netaddr.MustParseIP("1.1.1.1") {
 				return c.IntraHost == true
 			}
 		}
@@ -1023,7 +1023,7 @@ func TestDNATIntraHostIntegration(t *testing.T) {
 
 	assert.Condition(t, func() bool {
 		for _, c := range conns {
-			if c.Dest == util.AddressFromString("2.2.2.2") {
+			if c.Dest == netaddr.MustParseIP("2.2.2.2") {
 				return c.IntraHost == true
 			}
 		}

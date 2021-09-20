@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vishvananda/netns"
+	"inet.af/netaddr"
 )
 
 const (
@@ -40,8 +41,8 @@ func TestConnTrackerCrossNamespaceAllNsDisabled(t *testing.T) {
 	require.NoError(t, err)
 	time.Sleep(time.Second)
 
-	closer := nettestutil.StartServerTCPNs(t, net.ParseIP("2.2.2.4"), 8080, "test")
-	laddr := nettestutil.PingTCP(t, net.ParseIP("2.2.2.4"), 80).LocalAddr().(*net.TCPAddr)
+	closer := nettestutil.StartServerTCPNs(t, netaddr.MustParseIP("2.2.2.4"), 8080, "test")
+	laddr := nettestutil.PingTCP(t, netaddr.MustParseIP("2.2.2.4"), 80).LocalAddr().(*net.TCPAddr)
 	defer closer.Close()
 
 	testNs, err := netns.GetFromName("test")
@@ -52,11 +53,12 @@ func TestConnTrackerCrossNamespaceAllNsDisabled(t *testing.T) {
 	require.NoError(t, err)
 
 	time.Sleep(time.Second)
+	lip, _ := netaddr.FromStdIP(laddr.IP)
 	trans := ct.GetTranslationForConn(
 		network.ConnectionStats{
-			Source: util.AddressFromNetIP(laddr.IP),
+			Source: lip,
 			SPort:  uint16(laddr.Port),
-			Dest:   util.AddressFromString("2.2.2.4"),
+			Dest:   netaddr.MustParseIP("2.2.2.4"),
 			DPort:  uint16(80),
 			Type:   network.TCP,
 			NetNS:  testIno,
@@ -79,7 +81,7 @@ func TestMessageDump(t *testing.T) {
 	defer os.Remove(f.Name())
 	defer f.Close()
 
-	testMessageDump(t, f, net.ParseIP("1.1.1.1"), net.ParseIP("2.2.2.2"))
+	testMessageDump(t, f, netaddr.MustParseIP("1.1.1.1"), netaddr.MustParseIP("2.2.2.2"))
 }
 
 func TestMessageDump6(t *testing.T) {
@@ -93,10 +95,10 @@ func TestMessageDump6(t *testing.T) {
 	defer os.Remove(f.Name())
 	defer f.Close()
 
-	testMessageDump(t, f, net.ParseIP("fd00::1"), net.ParseIP("fd00::2"))
+	testMessageDump(t, f, netaddr.MustParseIP("fd00::1"), netaddr.MustParseIP("fd00::2"))
 }
 
-func testMessageDump(t *testing.T, f *os.File, serverIP, clientIP net.IP) {
+func testMessageDump(t *testing.T, f *os.File, serverIP, clientIP netaddr.IP) {
 	consumer := NewConsumer("/proc", 500, false)
 	events, err := consumer.Events()
 	require.NoError(t, err)

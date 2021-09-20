@@ -5,9 +5,9 @@ import (
 	"time"
 
 	model "github.com/DataDog/agent-payload/process"
-	procutil "github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/DataDog/datadog-agent/pkg/util/containers"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
+	"inet.af/netaddr"
 )
 
 const defaultTTL = 10 * time.Second
@@ -96,8 +96,8 @@ func (l *LocalResolver) Resolve(c *model.Connections) {
 		}
 		conn.Laddr.ContainerId = cid
 
-		ip := procutil.AddressFromString(conn.Laddr.Ip)
-		if ip == nil {
+		ip, err := netaddr.ParseIP(conn.Laddr.Ip)
+		if err != nil {
 			continue
 		}
 
@@ -120,8 +120,8 @@ func (l *LocalResolver) Resolve(c *model.Connections) {
 	for _, conn := range c.Conns {
 		if conn.Raddr.ContainerId == "" {
 			raddr := translatedContainerRaddr(conn.Raddr, conn.IpTranslation, conn.Type)
-			ip := procutil.AddressFromString(raddr.Ip)
-			if ip == nil {
+			ip, err := netaddr.ParseIP(raddr.Ip)
+			if err != nil {
 				continue
 			}
 

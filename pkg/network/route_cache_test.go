@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DataDog/datadog-agent/pkg/process/util"
-	gomock "github.com/golang/mock/gomock"
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	"inet.af/netaddr"
 )
 
 func TestRouteCacheGet(t *testing.T) {
@@ -26,8 +26,8 @@ func TestRouteCacheGet(t *testing.T) {
 
 		times int
 	}{
-		{source: "127.0.0.1", dest: "127.0.0.1", route: Route{Gateway: nil, IfIndex: 0}, ok: true, times: 1},
-		{source: "10.0.2.2", dest: "8.8.8.8", route: Route{Gateway: util.AddressFromString("10.0.2.1"), IfIndex: 1}, ok: true, times: 1},
+		{source: "127.0.0.1", dest: "127.0.0.1", route: Route{IfIndex: 0}, ok: true, times: 1},
+		{source: "10.0.2.2", dest: "8.8.8.8", route: Route{Gateway: netaddr.MustParseIP("10.0.2.1"), IfIndex: 1}, ok: true, times: 1},
 		{source: "1.2.3.4", dest: "5.6.7.8", route: Route{}, ok: false, times: 2}, // 2 calls expected here since this is not going to be cached
 	}
 
@@ -35,8 +35,8 @@ func TestRouteCacheGet(t *testing.T) {
 
 	// run through to fill up cache
 	for _, te := range tests {
-		source := util.AddressFromString(te.source)
-		dest := util.AddressFromString(te.dest)
+		source := netaddr.MustParseIP(te.source)
+		dest := netaddr.MustParseIP(te.dest)
 		m.EXPECT().Route(gomock.Eq(source), gomock.Eq(dest), gomock.Eq(te.netns)).
 			Return(te.route, te.ok).
 			Times(te.times)
@@ -47,8 +47,8 @@ func TestRouteCacheGet(t *testing.T) {
 	}
 
 	for _, te := range tests {
-		source := util.AddressFromString(te.source)
-		dest := util.AddressFromString(te.dest)
+		source := netaddr.MustParseIP(te.source)
+		dest := netaddr.MustParseIP(te.dest)
 		r, ok := cache.Get(source, dest, te.netns)
 		require.Equal(t, te.route, r)
 		require.Equal(t, te.ok, ok)
@@ -61,13 +61,13 @@ func TestRouteCacheTTL(t *testing.T) {
 
 	m := NewMockRouter(ctrl)
 
-	route := Route{Gateway: util.AddressFromString("1.1.1.1"), IfIndex: 0}
+	route := Route{Gateway: netaddr.MustParseIP("1.1.1.1"), IfIndex: 0}
 	m.EXPECT().Route(gomock.Any(), gomock.Any(), gomock.Any()).Return(route, true).Times(2)
 
 	cache := newRouteCache(10, m, time.Millisecond)
 
-	source := util.AddressFromString("1.1.1.1")
-	dest := util.AddressFromString("1.2.3.4")
+	source := netaddr.MustParseIP("1.1.1.1")
+	dest := netaddr.MustParseIP("1.2.3.4")
 	r, ok := cache.Get(source, dest, 0)
 	require.True(t, ok)
 	require.Equal(t, route, r)

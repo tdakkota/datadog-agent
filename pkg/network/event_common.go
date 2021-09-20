@@ -8,9 +8,9 @@ import (
 
 	"github.com/DataDog/datadog-agent/pkg/network/dns"
 	"github.com/DataDog/datadog-agent/pkg/network/http"
-	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/dustin/go-humanize"
 	"go4.org/intern"
+	"inet.af/netaddr"
 )
 
 // ConnectionType will be either TCP or UDP
@@ -106,7 +106,7 @@ func (e EphemeralPortType) String() string {
 
 // Connections wraps a collection of ConnectionStats
 type Connections struct {
-	DNS                         map[util.Address][]string
+	DNS                         map[netaddr.IP][]string
 	Conns                       []ConnectionStats
 	ConnTelemetry               *ConnectionsTelemetry
 	CompilationTelemetryByAsset map[string]RuntimeCompilationTelemetry
@@ -138,8 +138,8 @@ type RuntimeCompilationTelemetry struct {
 
 // ConnectionStats stores statistics for a single connection.  Field order in the struct should be 8-byte aligned
 type ConnectionStats struct {
-	Source util.Address
-	Dest   util.Address
+	Source netaddr.IP
+	Dest   netaddr.IP
 
 	MonotonicSentBytes uint64
 	LastSentBytes      uint64
@@ -210,8 +210,8 @@ type Subnet struct {
 
 // IPTranslation can be associated with a connection to show the connection is NAT'd
 type IPTranslation struct {
-	ReplSrcIP   util.Address
-	ReplDstIP   util.Address
+	ReplSrcIP   netaddr.IP
+	ReplDstIP   netaddr.IP
 	ReplSrcPort uint16
 	ReplDstPort uint16
 }
@@ -243,8 +243,20 @@ func (c ConnectionStats) ByteKey(buf []byte) ([]byte, error) {
 	buf[n] = uint8(c.Family)<<4 | uint8(c.Type)
 	n++
 
-	n += c.Source.WriteTo(buf[n:]) // 4 or 16 bytes
-	n += c.Dest.WriteTo(buf[n:])   // 4 or 16 bytes
+	if c.Source.Is4() {
+		ip := c.Source.As4()
+		n += copy(buf[n:], (ip)[:])
+	} else {
+		ip := c.Source.As16()
+		n += copy(buf[n:], ip[:])
+	}
+	if c.Dest.Is4() {
+		ip := c.Dest.As4()
+		n += copy(buf[n:], (ip)[:])
+	} else {
+		ip := c.Dest.As16()
+		n += copy(buf[n:], ip[:])
+	}
 	return buf[:n], nil
 }
 
@@ -254,13 +266,6 @@ const keyFmt = "p:%d|src:%s:%d|dst:%s:%d|f:%d|t:%d"
 // it should be in sync with ByteKey
 // Note: This is only used in /debug/* endpoints
 func BeautifyKey(key string) string {
-	bytesToAddress := func(buf []byte) util.Address {
-		if len(buf) == 4 {
-			return util.V4AddressFromBytes(buf)
-		}
-		return util.V6AddressFromBytes(buf)
-	}
-
 	raw := []byte(key)
 
 	// First 8 bytes are pid and ports
@@ -278,15 +283,14 @@ func BeautifyKey(key string) string {
 	if ConnectionFamily(family) == AFINET6 {
 		addrSize = 16
 	}
-
-	source := bytesToAddress(raw[9 : 9+addrSize])
-	dest := bytesToAddress(raw[9+addrSize : 9+2*addrSize])
+	source, _ := netaddr.FromStdIPRaw(raw[9 : 9+addrSize])
+	dest, _ := netaddr.FromStdIPRaw(raw[9+addrSize : 9+2*addrSize])
 
 	return fmt.Sprintf(keyFmt, pid, source, sport, dest, dport, family, typ)
 }
 
 // ConnectionSummary returns a string summarizing a connection
-func ConnectionSummary(c *ConnectionStats, names map[util.Address][]string) string {
+func ConnectionSummary(c *ConnectionStats, names map[netaddr.IP][]string) string {
 	str := fmt.Sprintf(
 		"[%s%s] [PID: %d] [%v:%d ⇄ %v:%d] ",
 		c.Type,
@@ -325,7 +329,7 @@ func ConnectionSummary(c *ConnectionStats, names map[util.Address][]string) stri
 	return str
 }
 
-func printAddress(address util.Address, names []string) string {
+func printAddress(address netaddr.IP, names []string) string {
 	if len(names) == 0 {
 		return address.String()
 	}

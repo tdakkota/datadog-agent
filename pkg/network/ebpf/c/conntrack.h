@@ -24,8 +24,8 @@ static __always_inline void print_translation(const conntrack_tuple_t *t) {
         log_debug("UDP\n");
     }
 
-    print_ip(t->saddr_h, t->saddr_l, t->sport, t->metadata);
-    print_ip(t->daddr_h, t->daddr_l, t->dport, t->metadata);
+    print_ip(t->saddr, t->sport, t->metadata);
+    print_ip(t->daddr, t->dport, t->metadata);
 }
 
 static __always_inline int nf_conntrack_tuple_to_conntrack_tuple(conntrack_tuple_t *t, const struct nf_conntrack_tuple *ct) {
@@ -56,30 +56,26 @@ static __always_inline int nf_conntrack_tuple_to_conntrack_tuple(conntrack_tuple
 
     if (ct->src.l3num == AF_INET) {
         t->metadata |= CONN_V4;
-        t->saddr_l = ct->src.u3.ip;
-        t->daddr_l = ct->dst.u3.ip;
-
-        if (!t->saddr_l || !t->daddr_l) {
-            log_debug("ERR(to_conn_tuple.v4): src/dst addr not set src:%u, dst:%u\n", t->saddr_l, t->daddr_l);
+        if (!ct->src.u3.ip || !ct->dst.u3.ip) {
+            log_debug("ERR(to_conn_tuple.v4): src/dst addr not set src:%u, dst:%u\n", ct->src.u3.ip, ct->dst.u3.ip);
             return 0;
         }
+        set_ipv4(&t->saddr, ct->src.u3.ip);
+        set_ipv4(&t->daddr, ct->dst.u3.ip);
     }
 #ifdef FEATURE_IPV6_ENABLED
     else if (ct->src.l3num == AF_INET6) {
         t->metadata |= CONN_V6;
-        read_in6_addr(&t->saddr_h, &t->saddr_l, &ct->src.u3.in6);
-        read_in6_addr(&t->daddr_h, &t->daddr_l, &ct->dst.u3.in6);
-
-        if (!(t->saddr_h || t->saddr_l)) {
-            log_debug("ERR(to_conn_tuple.v6): src addr not set: src_l: %llu, src_h: %llu\n",
-                t->saddr_l, t->saddr_h);
+        if (!is_ipv6_set(&ct->src.u3.in6)) {
+            log_debug("ERR(to_conn_tuple.v6): src addr not set\n");
             return 0;
         }
-        if (!(t->daddr_h || t->daddr_l)) {
-            log_debug("ERR(to_conn_tuple.v6): dst addr not set: dst_l: %llu, dst_h: %llu\n",
-                t->daddr_l, t->daddr_h);
+        if (!is_ipv6_set(&ct->dst.u3.in6)) {
+            log_debug("ERR(to_conn_tuple.v6): dst addr not set\n");
             return 0;
         }
+        t->saddr = ct->src.u3.in6;
+        t->daddr = ct->dst.u3.in6;
     }
 #endif
 

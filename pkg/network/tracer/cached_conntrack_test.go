@@ -8,11 +8,11 @@ import (
 
 	"github.com/DataDog/datadog-agent/pkg/network"
 	"github.com/DataDog/datadog-agent/pkg/network/netlink"
-	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
+	"inet.af/netaddr"
 )
 
 func TestEnsureConntrack(t *testing.T) {
@@ -87,8 +87,8 @@ func TestCachedConntrackExists(t *testing.T) {
 
 	m.EXPECT().Close().Times(1)
 
-	saddr := util.AddressFromString("1.2.3.4")
-	daddr := util.AddressFromString("2.3.4.5")
+	saddr := netaddr.MustParseIP("1.2.3.4")
+	daddr := netaddr.MustParseIP("2.3.4.5")
 	var sport uint16 = 23
 	var dport uint16 = 223
 	ct := &network.ConnectionStats{

@@ -1,9 +1,9 @@
 package http
 
 import (
-	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 	"github.com/DataDog/sketches-go/ddsketch"
+	"inet.af/netaddr"
 )
 
 // Method is the type used to represent HTTP request methods
@@ -57,31 +57,25 @@ func (m Method) String() string {
 
 // Key is an identifier for a group of HTTP transactions
 type Key struct {
-	SrcIPHigh uint64
-	SrcIPLow  uint64
-	SrcPort   uint16
+	SrcIP   netaddr.IP
+	SrcPort uint16
 
-	DstIPHigh uint64
-	DstIPLow  uint64
-	DstPort   uint16
+	DstIP   netaddr.IP
+	DstPort uint16
 
 	Path   string
 	Method Method
 }
 
 // NewKey generates a new Key
-func NewKey(saddr, daddr util.Address, sport, dport uint16, path string, method Method) Key {
-	saddrl, saddrh := util.ToLowHigh(saddr)
-	daddrl, daddrh := util.ToLowHigh(daddr)
+func NewKey(saddr, daddr netaddr.IP, sport, dport uint16, path string, method Method) Key {
 	return Key{
-		SrcIPHigh: saddrh,
-		SrcIPLow:  saddrl,
-		SrcPort:   sport,
-		DstIPHigh: daddrh,
-		DstIPLow:  daddrl,
-		DstPort:   dport,
-		Path:      path,
-		Method:    method,
+		SrcIP:   saddr,
+		SrcPort: sport,
+		DstIP:   daddr,
+		DstPort: dport,
+		Path:    path,
+		Method:  method,
 	}
 }
 

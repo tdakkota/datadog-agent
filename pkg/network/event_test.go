@@ -2,14 +2,12 @@ package network
 
 import (
 	"fmt"
-	"net"
 	"runtime"
 	"testing"
 
-	"github.com/DataDog/datadog-agent/pkg/process/util"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"inet.af/netaddr"
 )
 
 var (
@@ -17,8 +15,8 @@ var (
 		Pid:                123,
 		Type:               1,
 		Family:             AFINET,
-		Source:             util.AddressFromString("192.168.0.1"),
-		Dest:               util.AddressFromString("192.168.0.103"),
+		Source:             netaddr.MustParseIP("192.168.0.1"),
+		Dest:               netaddr.MustParseIP("192.168.0.103"),
 		SPort:              123,
 		DPort:              35000,
 		MonotonicSentBytes: 123123,
@@ -34,8 +32,8 @@ func TestBeautifyKey(t *testing.T) {
 			Pid:    345,
 			Type:   0,
 			Family: AFINET6,
-			Source: util.AddressFromNetIP(net.ParseIP("::7f00:35:0:1")),
-			Dest:   util.AddressFromNetIP(net.ParseIP("2001:db8::2:1")),
+			Source: netaddr.MustParseIP("::7f00:35:0:1"),
+			Dest:   netaddr.MustParseIP("2001:db8::2:1"),
 			SPort:  4444,
 			DPort:  8888,
 		},
@@ -44,8 +42,8 @@ func TestBeautifyKey(t *testing.T) {
 			Type:      0,
 			Family:    AFINET,
 			Direction: 2,
-			Source:    util.AddressFromString("172.21.148.124"),
-			Dest:      util.AddressFromString("130.211.21.187"),
+			Source:    netaddr.MustParseIP("172.21.148.124"),
+			Dest:      netaddr.MustParseIP("130.211.21.187"),
 			SPort:     52012,
 			DPort:     443,
 		},
@@ -59,8 +57,8 @@ func TestBeautifyKey(t *testing.T) {
 
 func TestConnStatsByteKey(t *testing.T) {
 	buf := make([]byte, ConnectionByteKeyMaxLen)
-	addrA := util.AddressFromString("127.0.0.1")
-	addrB := util.AddressFromString("127.0.0.2")
+	addrA := netaddr.MustParseIP("127.0.0.1")
+	addrB := netaddr.MustParseIP("127.0.0.2")
 
 	for _, test := range []struct {
 		a ConnectionStats
@@ -79,11 +77,11 @@ func TestConnStatsByteKey(t *testing.T) {
 			b: ConnectionStats{Source: addrA, Dest: addrB},
 		},
 		{ // Source is different
-			a: ConnectionStats{Source: util.AddressFromString("123.255.123.0"), Dest: addrB},
+			a: ConnectionStats{Source: netaddr.MustParseIP("123.255.123.0"), Dest: addrB},
 			b: ConnectionStats{Source: addrA, Dest: addrB},
 		},
 		{ // Dest is different
-			a: ConnectionStats{Source: addrA, Dest: util.AddressFromString("129.0.1.2")},
+			a: ConnectionStats{Source: addrA, Dest: netaddr.MustParseIP("129.0.1.2")},
 			b: ConnectionStats{Source: addrA, Dest: addrB},
 		},
 		{ // Source port is different
@@ -148,8 +146,8 @@ func TestIsExpired(t *testing.T) {
 
 func BenchmarkByteKey(b *testing.B) {
 	buf := make([]byte, ConnectionByteKeyMaxLen)
-	addrA := util.AddressFromString("127.0.0.1")
-	addrB := util.AddressFromString("127.0.0.2")
+	addrA := netaddr.MustParseIP("127.0.0.1")
+	addrB := netaddr.MustParseIP("127.0.0.2")
 	c := ConnectionStats{Pid: 1, Dest: addrB, Family: 0, Type: 1, Source: addrA}
 
 	b.ReportAllocs()

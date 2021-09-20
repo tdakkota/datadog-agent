@@ -74,45 +74,39 @@ static __always_inline int read_conn_tuple_partial(conn_tuple_t* t, struct sock*
     // Retrieve addresses
     if (family == AF_INET) {
         t->metadata |= CONN_V4;
-        if (t->saddr_l == 0) {
-            bpf_probe_read(&t->saddr_l, sizeof(__be32), &skp->sk_rcv_saddr);
+        if (!is_ipv4_set(&t->saddr)) {
+            read_ipv4(&t->saddr, &skp->sk_rcv_saddr);
         }
-        if (t->daddr_l == 0) {
-            bpf_probe_read(&t->daddr_l, sizeof(__be32), &skp->sk_daddr);
+        if (!is_ipv4_set(&t->daddr)) {
+            read_ipv4(&t->daddr, &skp->sk_daddr);
         }
 
-        if (!t->saddr_l || !t->daddr_l) {
-            log_debug("ERR(read_conn_tuple.v4): src/dst addr not set src:%d,dst:%d\n", t->saddr_l, t->daddr_l);
+        if (!is_ipv4_set(&t->saddr) || !is_ipv4_set(&t->daddr)) {
+            log_debug("ERR(read_conn_tuple.v4): src/dst addr not set src:%x,dst:%x\n", t->saddr.s6_addr32[3], t->daddr.s6_addr32[3]);
             return 0;
         }
     }
 #ifdef FEATURE_IPV6_ENABLED
     else if (family == AF_INET6) {
         // TODO cleanup? having it split on 64 bits is not nice for kernel reads
-        read_in6_addr(&t->saddr_h, &t->saddr_l, &skp->sk_v6_rcv_saddr);
-        read_in6_addr(&t->daddr_h, &t->daddr_l, &skp->sk_v6_daddr);
+        read_in6_addr(&t->saddr, &skp->sk_v6_rcv_saddr);
+        read_in6_addr(&t->daddr, &skp->sk_v6_daddr);
 
         // We can only pass 4 args to bpf_trace_printk
         // so split those 2 statements to be able to log everything
-        if (!(t->saddr_h || t->saddr_l)) {
-            log_debug("ERR(read_conn_tuple.v6): src addr not set: src_l:%d,src_h:%d\n",
-                t->saddr_l, t->saddr_h);
+        if (!is_ipv6_set(&t->saddr)) {
+            log_debug("ERR(read_conn_tuple.v6): src addr not set\n");
             return 0;
         }
 
-        if (!(t->daddr_h || t->daddr_l)) {
-            log_debug("ERR(read_conn_tuple.v6): dst addr not set: dst_l:%d,dst_h:%d\n",
-                t->daddr_l, t->daddr_h);
+        if (!is_ipv6_set(&t->daddr)) {
+            log_debug("ERR(read_conn_tuple.v6): dst addr not set\n");
             return 0;
         }
 
         // Check if we can map IPv6 to IPv4
-        if (is_ipv4_mapped_ipv6(t->saddr_h, t->saddr_l, t->daddr_h, t->daddr_l)) {
+        if (is_ipv4_mapped_ipv6(&t->saddr) || is_ipv4_mapped_ipv6(&t->daddr)) {
             t->metadata |= CONN_V4;
-            t->saddr_h = 0;
-            t->daddr_h = 0;
-            t->saddr_l = (__u32)(t->saddr_l >> 32);
-            t->daddr_l = (__u32)(t->daddr_l >> 32);
         } else {
             t->metadata |= CONN_V6;
         }
@@ -249,27 +243,23 @@ int kprobe__ip6_make_skb(struct pt_regs* ctx) {
 #else
         struct flowi6* fl6 = (struct flowi6*)PT_REGS_PARM9(ctx);
 #endif
-        read_in6_addr(&t.saddr_h, &t.saddr_l, &fl6->saddr);
-        read_in6_addr(&t.daddr_h, &t.daddr_l, &fl6->daddr);
+        read_in6_addr(&t.saddr, &fl6->saddr);
+        read_in6_addr(&t.daddr, &fl6->daddr);
 
-        if (!(t.saddr_h || t.saddr_l)) {
-            log_debug("ERR(fl6): src addr not set src_l:%d,src_h:%d\n", t.saddr_l, t.saddr_h);
+        if (!is_ipv6_set(&t.saddr)) {
+            log_debug("ERR(fl6): src addr not set\n");
             increment_telemetry_count(udp_send_missed);
             return 0;
         }
-        if (!(t.daddr_h || t.daddr_l)) {
-            log_debug("ERR(fl6): dst addr not set dst_l:%d,dst_h:%d\n", t.daddr_l, t.daddr_h);
+        if (!is_ipv6_set(&t.daddr)) {
+            log_debug("ERR(fl6): dst addr not set\n");
             increment_telemetry_count(udp_send_missed);
             return 0;
         }
 
         // Check if we can map IPv6 to IPv4
-        if (is_ipv4_mapped_ipv6(t.saddr_h, t.saddr_l, t.daddr_h, t.daddr_l)) {
+        if (is_ipv4_mapped_ipv6(&t.saddr) || is_ipv4_mapped_ipv6(&t.daddr)) {
             t.metadata |= CONN_V4;
-            t.saddr_h = 0;
-            t.daddr_h = 0;
-            t.saddr_l = (u32)(t.saddr_l >> 32);
-            t.daddr_l = (u32)(t.daddr_l >> 32);
         } else {
             t.metadata |= CONN_V6;
         }
@@ -307,10 +297,10 @@ int kprobe__ip_make_skb(struct pt_regs* ctx) {
     conn_tuple_t t = {};
     if (!read_conn_tuple(&t, sk, pid_tgid, CONN_TYPE_UDP)) {
         struct flowi4* fl4 = (struct flowi4*)PT_REGS_PARM2(ctx);
-        bpf_probe_read(&t.saddr_l, sizeof(__be32), &fl4->saddr);
-        bpf_probe_read(&t.daddr_l, sizeof(__be32), &fl4->daddr);
-        if (!t.saddr_l || !t.daddr_l) {
-            log_debug("ERR(fl4): src/dst addr not set src:%d,dst:%d\n", t.saddr_l, t.daddr_l);
+        read_ipv4(&t.saddr, &fl4->saddr);
+        read_ipv4(&t.daddr, &fl4->daddr);
+        if (!is_ipv4_set(&t.saddr) || !is_ipv4_set(&t.daddr)) {
+            log_debug("ERR(fl4): src/dst addr not set src:%x,dst:%x\n", t.saddr.s6_addr32[3], t.daddr.s6_addr32[3]);
             increment_telemetry_count(udp_send_missed);
             return 0;
         }
@@ -397,7 +387,7 @@ int kretprobe__udp_recvmsg(struct pt_regs* ctx) {
 
     conn_tuple_t t = {};
     __builtin_memset(&t, 0, sizeof(conn_tuple_t));
-    sockaddr_to_addr(sa, &t.daddr_h, &t.daddr_l, &t.dport);
+    sockaddr_to_addr(sa, &t.daddr, &t.dport);
 
     if (!read_conn_tuple_partial(&t, st->sk, pid_tgid, CONN_TYPE_UDP)) {
         log_debug("ERR(kretprobe/udp_recvmsg): error reading conn tuple, pid_tgid=%d\n", pid_tgid);

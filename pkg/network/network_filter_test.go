@@ -4,8 +4,8 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/stretchr/testify/assert"
+	"inet.af/netaddr"
 )
 
 var testSourceFilters = map[string][]string{
@@ -44,39 +44,39 @@ func TestParseConnectionFilters(t *testing.T) {
 	destList := ParseConnectionFilters(testDestinationFilters)
 
 	// source
-	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: util.AddressFromString("172.0.0.1"), SPort: uint16(10), Type: TCP}))
-	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: util.AddressFromString("*"), SPort: uint16(9000), Type: TCP})) // only port 9000
-	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: util.AddressFromString("10.0.1.24"), SPort: uint16(9000), Type: TCP}))
-	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: util.AddressFromString("::7f00:35:0:0"), SPort: uint16(443), Type: TCP})) // ipv6
-	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: util.AddressFromString("0"), SPort: uint16(443), Type: TCP}))             // 0 == ::7f00:35:0:0
-	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: util.AddressFromString("10.0.0.10"), SPort: uint16(6666), Type: TCP}))    // port wildcard
-	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: util.AddressFromString("10.0.0.10"), SPort: uint16(33), Type: TCP}))
-	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: util.AddressFromString("10.0.0.25"), SPort: uint16(30), Type: TCP})) // bad config
-	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: util.AddressFromString("123.ABCD"), SPort: uint16(30), Type: TCP}))  // bad IP config
+	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: netaddr.MustParseIP("172.0.0.1"), SPort: uint16(10), Type: TCP}))
+	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: netaddr.MustParseIP("::"), SPort: uint16(9000), Type: TCP})) // only port 9000
+	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: netaddr.MustParseIP("10.0.1.24"), SPort: uint16(9000), Type: TCP}))
+	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: netaddr.MustParseIP("::7f00:35:0:0"), SPort: uint16(443), Type: TCP})) // ipv6
+	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: netaddr.MustParseIP("::"), SPort: uint16(443), Type: TCP}))            // 0 == ::7f00:35:0:0
+	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: netaddr.MustParseIP("10.0.0.10"), SPort: uint16(6666), Type: TCP}))    // port wildcard
+	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: netaddr.MustParseIP("10.0.0.10"), SPort: uint16(33), Type: TCP}))
+	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: netaddr.MustParseIP("10.0.0.25"), SPort: uint16(30), Type: TCP})) // bad config
+	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: netaddr.IP{}, SPort: uint16(30), Type: TCP}))                     // bad IP config
 
-	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: util.AddressFromString("172.0.0.2"), SPort: uint16(100), Type: TCP}))
-	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: util.AddressFromString("::7f00:35:0:1"), SPort: uint16(100), Type: TCP})) // invalid port
-	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: util.AddressFromString("10.0.0.11"), SPort: uint16(6666), Type: TCP}))     // port wildcard
-	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: util.AddressFromString("10.0.0.26"), SPort: uint16(30), Type: TCP}))      // invalid port range
-	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: util.AddressFromString("10.0.0.1"), SPort: uint16(100), Type: TCP}))       // tcp wildcard
-	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: util.AddressFromString("10.0.0.2"), SPort: uint16(53363), Type: UDP}))
-	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: util.AddressFromString("10.0.0.2"), SPort: uint16(53361), Type: TCP}))
-	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: util.AddressFromString("10.0.0.2"), SPort: uint16(53361), Type: UDP}))
+	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: netaddr.MustParseIP("172.0.0.2"), SPort: uint16(100), Type: TCP}))
+	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: netaddr.MustParseIP("::7f00:35:0:1"), SPort: uint16(100), Type: TCP})) // invalid port
+	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: netaddr.MustParseIP("10.0.0.11"), SPort: uint16(6666), Type: TCP}))     // port wildcard
+	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: netaddr.MustParseIP("10.0.0.26"), SPort: uint16(30), Type: TCP}))      // invalid port range
+	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: netaddr.MustParseIP("10.0.0.1"), SPort: uint16(100), Type: TCP}))       // tcp wildcard
+	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: netaddr.MustParseIP("10.0.0.2"), SPort: uint16(53363), Type: UDP}))
+	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: netaddr.MustParseIP("10.0.0.2"), SPort: uint16(53361), Type: TCP}))
+	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Source: netaddr.MustParseIP("10.0.0.2"), SPort: uint16(53361), Type: UDP}))
 
 	// destination
-	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: util.AddressFromString("10.0.0.5"), DPort: uint16(8080), Type: TCP}))
-	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: util.AddressFromString("10.0.0.5"), DPort: uint16(80), Type: TCP}))
-	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: util.AddressFromString(""), DPort: uint16(1234), Type: TCP}))
-	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: util.AddressFromString("2001:db8::2:1"), DPort: uint16(5001), Type: TCP})) // ipv6
-	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: util.AddressFromString("2001:db8::5:1"), DPort: uint16(80), Type: TCP}))   // ipv6 CIDR
-	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: util.AddressFromString("1.1.1.1"), DPort: uint16(11211), Type: TCP}))
-	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: util.AddressFromString("*"), DPort: uint16(30), Type: TCP}))
+	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: netaddr.MustParseIP("10.0.0.5"), DPort: uint16(8080), Type: TCP}))
+	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: netaddr.MustParseIP("10.0.0.5"), DPort: uint16(80), Type: TCP}))
+	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: netaddr.MustParseIP("::"), DPort: uint16(1234), Type: TCP}))
+	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: netaddr.MustParseIP("2001:db8::2:1"), DPort: uint16(5001), Type: TCP})) // ipv6
+	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: netaddr.MustParseIP("2001:db8::5:1"), DPort: uint16(80), Type: TCP}))   // ipv6 CIDR
+	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: netaddr.MustParseIP("1.1.1.1"), DPort: uint16(11211), Type: TCP}))
+	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: netaddr.MustParseIP("::"), DPort: uint16(30), Type: TCP}))
 
-	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: util.AddressFromString("2001:db8::2:2"), DPort: uint16(3333), Type: UDP})) // invalid config
-	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: util.AddressFromString("10.0.0.3/24"), DPort: uint16(80), Type: TCP}))     // invalid config
-	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: util.AddressFromString("10.0.0.4"), DPort: uint16(1234), Type: TCP}))       // port wildcard
-	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: util.AddressFromString("2001:db8::2:2"), DPort: uint16(8082), Type: TCP})) // invalid config
-	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: util.AddressFromString("10.0.0.5"), DPort: uint16(0), Type: TCP}))         // invalid port
+	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: netaddr.MustParseIP("2001:db8::2:2"), DPort: uint16(3333), Type: UDP})) // invalid config
+	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: netaddr.IP{}, DPort: uint16(80), Type: TCP}))                           // invalid config
+	assert.True(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: netaddr.MustParseIP("10.0.0.4"), DPort: uint16(1234), Type: TCP}))       // port wildcard
+	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: netaddr.MustParseIP("2001:db8::2:2"), DPort: uint16(8082), Type: TCP})) // invalid config
+	assert.False(t, IsExcludedConnection(sourceList, destList, &ConnectionStats{Dest: netaddr.MustParseIP("10.0.0.5"), DPort: uint16(0), Type: TCP}))         // invalid port
 }
 
 var sink bool
@@ -112,18 +112,30 @@ func BenchmarkIsBlacklistedConnectionIPv6(b *testing.B) {
 	}
 }
 
-func randIPv4(count int) (addrs []util.Address) {
+func randIPv4(count int) (addrs []netaddr.IP) {
+	var b [4]byte
 	for i := 0; i < count; i++ {
-		r := rand.Intn(999999999) + 999999
-		addrs = append(addrs, util.V4Address(uint32(r)))
+		for {
+			if _, err := rand.Read(b[:]); err != nil {
+				continue
+			}
+			addrs = append(addrs, netaddr.IPFrom4(b))
+			break
+		}
 	}
 	return addrs
 }
 
-func randIPv6(count int) (addrs []util.Address) {
+func randIPv6(count int) (addrs []netaddr.IP) {
+	var b [16]byte
 	for i := 0; i < count; i++ {
-		r := rand.Intn(999999999) + 999999
-		addrs = append(addrs, util.V6Address(uint64(r), uint64(r)))
+		for {
+			if _, err := rand.Read(b[:]); err != nil {
+				continue
+			}
+			addrs = append(addrs, netaddr.IPv6Raw(b))
+			break
+		}
 	}
 	return addrs
 }

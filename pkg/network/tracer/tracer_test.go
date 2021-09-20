@@ -27,7 +27,6 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/network/config"
 	"github.com/DataDog/datadog-agent/pkg/network/http"
 	"github.com/DataDog/datadog-agent/pkg/network/http/testutil"
-	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/DataDog/datadog-agent/pkg/util/kernel"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 	"github.com/cihub/seelog"
@@ -35,6 +34,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
+	"inet.af/netaddr"
 )
 
 var (
@@ -629,26 +629,26 @@ func TestSkipConnectionDNS(t *testing.T) {
 	t.Run("CollectLocalDNS disabled", func(t *testing.T) {
 		tr := &Tracer{config: &config.Config{CollectLocalDNS: false}}
 		assert.True(t, tr.shouldSkipConnection(&network.ConnectionStats{
-			Source: util.AddressFromString("10.0.0.1"),
-			Dest:   util.AddressFromString("127.0.0.1"),
+			Source: netaddr.MustParseIP("10.0.0.1"),
+			Dest:   netaddr.MustParseIP("127.0.0.1"),
 			SPort:  1000, DPort: 53,
 		}))
 
 		assert.False(t, tr.shouldSkipConnection(&network.ConnectionStats{
-			Source: util.AddressFromString("10.0.0.1"),
-			Dest:   util.AddressFromString("127.0.0.1"),
+			Source: netaddr.MustParseIP("10.0.0.1"),
+			Dest:   netaddr.MustParseIP("127.0.0.1"),
 			SPort:  1000, DPort: 8080,
 		}))
 
 		assert.True(t, tr.shouldSkipConnection(&network.ConnectionStats{
-			Source: util.AddressFromString("::3f::45"),
-			Dest:   util.AddressFromString("::1"),
+			Source: netaddr.MustParseIP("::3f:45"),
+			Dest:   netaddr.MustParseIP("::1"),
 			SPort:  53, DPort: 1000,
 		}))
 
 		assert.True(t, tr.shouldSkipConnection(&network.ConnectionStats{
-			Source: util.AddressFromString("::3f::45"),
-			Dest:   util.AddressFromString("::1"),
+			Source: netaddr.MustParseIP("::3f:45"),
+			Dest:   netaddr.MustParseIP("::1"),
 			SPort:  53, DPort: 1000,
 		}))
 	})
@@ -657,26 +657,26 @@ func TestSkipConnectionDNS(t *testing.T) {
 		tr := &Tracer{config: &config.Config{CollectLocalDNS: true}}
 
 		assert.False(t, tr.shouldSkipConnection(&network.ConnectionStats{
-			Source: util.AddressFromString("10.0.0.1"),
-			Dest:   util.AddressFromString("127.0.0.1"),
+			Source: netaddr.MustParseIP("10.0.0.1"),
+			Dest:   netaddr.MustParseIP("127.0.0.1"),
 			SPort:  1000, DPort: 53,
 		}))
 
 		assert.False(t, tr.shouldSkipConnection(&network.ConnectionStats{
-			Source: util.AddressFromString("10.0.0.1"),
-			Dest:   util.AddressFromString("127.0.0.1"),
+			Source: netaddr.MustParseIP("10.0.0.1"),
+			Dest:   netaddr.MustParseIP("127.0.0.1"),
 			SPort:  1000, DPort: 8080,
 		}))
 
 		assert.False(t, tr.shouldSkipConnection(&network.ConnectionStats{
-			Source: util.AddressFromString("::3f::45"),
-			Dest:   util.AddressFromString("::1"),
+			Source: netaddr.MustParseIP("::3f:45"),
+			Dest:   netaddr.MustParseIP("::1"),
 			SPort:  53, DPort: 1000,
 		}))
 
 		assert.False(t, tr.shouldSkipConnection(&network.ConnectionStats{
-			Source: util.AddressFromString("::3f::45"),
-			Dest:   util.AddressFromString("::1"),
+			Source: netaddr.MustParseIP("::3f:45"),
+			Dest:   netaddr.MustParseIP("::1"),
 			SPort:  53, DPort: 1000,
 		}))
 

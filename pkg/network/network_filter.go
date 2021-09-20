@@ -2,20 +2,23 @@ package network
 
 import (
 	"fmt"
-	"net"
 	"strconv"
 	"strings"
 
-	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
+	"inet.af/netaddr"
 )
 
 // ConnectionFilter holds a user-defined excluded IP/CIDR, and ports
 type ConnectionFilter struct {
-	IP       *net.IPNet // If nil, then all IPs will be considered matching.
+	IP       netaddr.IPPrefix // If zero value, then all IPs will be considered matching.
 	AllPorts ConnTypeFilter
 
 	Ports map[uint16]ConnTypeFilter
+}
+
+func (cf ConnectionFilter) String() string {
+	return fmt.Sprintf("ip=%s all=%s ports=%+v", cf.IP, cf.AllPorts, cf.Ports)
 }
 
 // ConnTypeFilter holds user-defined protocols
@@ -24,22 +27,35 @@ type ConnTypeFilter struct {
 	UDP bool
 }
 
+func (ctf ConnTypeFilter) String() string {
+	if ctf.TCP {
+		if ctf.UDP {
+			return "tcp/udp"
+		}
+		return "tcp"
+	}
+	if ctf.UDP {
+		return "udp"
+	}
+	return "?"
+}
+
 // ParseConnectionFilters takes the user defined excludelist and returns a slice of ConnectionFilters
 func ParseConnectionFilters(filters map[string][]string) (excludelist []*ConnectionFilter) {
 	for ip, portFilters := range filters {
 		filter := &ConnectionFilter{Ports: map[uint16]ConnTypeFilter{}}
-		var subnet *net.IPNet
+		var subnet netaddr.IPPrefix
 		var err error
 
 		// retrieve valid IPs
 		if strings.ContainsRune(ip, '*') {
-			subnet = nil // use for wildcard
+			// use zero value for wildcard
 		} else if strings.ContainsRune(ip, '/') {
-			_, subnet, err = net.ParseCIDR(ip)
+			subnet, err = netaddr.ParseIPPrefix(ip)
 		} else if strings.ContainsRune(ip, '.') {
-			_, subnet, err = net.ParseCIDR(ip + "/32") // if given ipv4, prefix length of 32
+			subnet, err = netaddr.ParseIPPrefix(ip + "/32") // if given ipv4, prefix length of 32
 		} else if strings.Contains(ip, "::") {
-			_, subnet, err = net.ParseCIDR(ip + "/64") // if given ipv6, prefix length of 64
+			subnet, err = netaddr.ParseIPPrefix(ip + "/64") // if given ipv6, prefix length of 64
 		} else {
 			log.Errorf("Invalid IP/CIDR/* defined for connection filter")
 			continue
@@ -62,7 +78,7 @@ func ParseConnectionFilters(filters map[string][]string) (excludelist []*Connect
 
 			// Port filter for is a wildcard
 			if lowerPort == 0 && upperPort == 0 {
-				if subnet == nil { // Check that theres no wildcard filter above, or we'd just skip everything which is invalid
+				if subnet.IsZero() { // Check that there is no wildcard filter above, or we'd just skip everything which is invalid
 					err = log.Errorf("Given rule will not be respected. Invalid filter with IP/CIDR as * and port as *")
 					break
 				}
@@ -156,16 +172,13 @@ func IsExcludedConnection(scf []*ConnectionFilter, dcf []*ConnectionFilter, conn
 		return false
 	}
 
-	buf := util.IPBufferPool.Get().([]byte)
-	defer util.IPBufferPool.Put(buf)
-
-	if len(scf) > 0 && conn.Source != nil {
-		if findMatchingFilter(scf, util.NetIPFromAddress(conn.Source, buf), conn.SPort, conn.Type) {
+	if len(scf) > 0 && !conn.Source.IsZero() {
+		if findMatchingFilter(scf, conn.Source, conn.SPort, conn.Type) {
 			return true
 		}
 	}
-	if len(dcf) > 0 && conn.Dest != nil {
-		if findMatchingFilter(dcf, util.NetIPFromAddress(conn.Dest, buf), conn.DPort, conn.Type) {
+	if len(dcf) > 0 && !conn.Dest.IsZero() {
+		if findMatchingFilter(dcf, conn.Dest, conn.DPort, conn.Type) {
 			return true
 		}
 	}
@@ -173,9 +186,9 @@ func IsExcludedConnection(scf []*ConnectionFilter, dcf []*ConnectionFilter, conn
 }
 
 // findMatchingFilter iterates through filters to see if this connection matches any defined filter
-func findMatchingFilter(cf []*ConnectionFilter, ip net.IP, addrPort uint16, addrType ConnectionType) bool {
+func findMatchingFilter(cf []*ConnectionFilter, ip netaddr.IP, addrPort uint16, addrType ConnectionType) bool {
 	for _, filter := range cf {
-		if filter.IP == nil || filter.IP.Contains(ip) {
+		if filter.IP.IsZero() || filter.IP.Contains(ip) {
 			if filter.AllPorts.TCP && filter.AllPorts.UDP { // Wildcard port range case
 				return true
 			} else if filter.AllPorts.TCP && addrType == TCP { // Wildcard port range for only TCP

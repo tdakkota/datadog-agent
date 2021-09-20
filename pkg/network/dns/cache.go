@@ -10,6 +10,7 @@ import (
 
 	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
+	"inet.af/netaddr"
 )
 
 type reverseDNSCache struct {
@@ -26,7 +27,7 @@ type reverseDNSCache struct {
 	oversized int64
 
 	mux  sync.Mutex
-	data map[util.Address]*dnsCacheVal
+	data map[netaddr.IP]*dnsCacheVal
 	exit chan struct{}
 	size int
 
@@ -37,7 +38,7 @@ type reverseDNSCache struct {
 
 func newReverseDNSCache(size int, expirationPeriod time.Duration) *reverseDNSCache {
 	cache := &reverseDNSCache{
-		data:              make(map[util.Address]*dnsCacheVal),
+		data:              make(map[netaddr.IP]*dnsCacheVal),
 		exit:              make(chan struct{}),
 		size:              size,
 		oversizedLogLimit: util.NewLogLimit(10, time.Minute*10),
@@ -89,7 +90,7 @@ func (c *reverseDNSCache) Add(translation *translation) bool {
 	return true
 }
 
-func (c *reverseDNSCache) Get(ips []util.Address) map[util.Address][]string {
+func (c *reverseDNSCache) Get(ips []netaddr.IP) map[netaddr.IP][]string {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 
@@ -102,12 +103,12 @@ func (c *reverseDNSCache) Get(ips []util.Address) map[util.Address][]string {
 	}
 
 	var (
-		resolved   = make(map[util.Address][]string)
-		unresolved = make(map[util.Address]struct{})
-		oversized  = make(map[util.Address]struct{})
+		resolved   = make(map[netaddr.IP][]string)
+		unresolved = make(map[netaddr.IP]struct{})
+		oversized  = make(map[netaddr.IP]struct{})
 	)
 
-	collectNamesForIP := func(addr util.Address) {
+	collectNamesForIP := func(addr netaddr.IP) {
 		if _, ok := resolved[addr]; ok {
 			return
 		}
@@ -201,7 +202,7 @@ func (c *reverseDNSCache) Expire(now time.Time) {
 	)
 }
 
-func (c *reverseDNSCache) getNamesForIP(ip util.Address) []string {
+func (c *reverseDNSCache) getNamesForIP(ip netaddr.IP) []string {
 	val, ok := c.data[ip]
 	if !ok {
 		return nil
@@ -247,10 +248,10 @@ func (v *dnsCacheVal) copy() []string {
 
 type translation struct {
 	dns string
-	ips map[util.Address]time.Time
+	ips map[netaddr.IP]time.Time
 }
 
-func (t *translation) add(addr util.Address, ttl time.Duration) {
+func (t *translation) add(addr netaddr.IP, ttl time.Duration) {
 	if _, ok := t.ips[addr]; ok {
 		return
 	}

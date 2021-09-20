@@ -8,10 +8,9 @@ import (
 
 	"github.com/DataDog/datadog-agent/pkg/network"
 	"github.com/DataDog/datadog-agent/pkg/network/encoding"
-	"github.com/DataDog/datadog-agent/pkg/process/util"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"inet.af/netaddr"
 )
 
 func TestDecode(t *testing.T) {
@@ -20,8 +19,8 @@ func TestDecode(t *testing.T) {
 	in := &network.Connections{
 		Conns: []network.ConnectionStats{
 			{
-				Source:               util.AddressFromString("10.1.1.1"),
-				Dest:                 util.AddressFromString("10.2.2.2"),
+				Source:               netaddr.MustParseIP("10.1.1.1"),
+				Dest:                 netaddr.MustParseIP("10.2.2.2"),
 				MonotonicSentBytes:   1,
 				LastSentBytes:        2,
 				MonotonicRecvBytes:   100,
@@ -34,8 +33,8 @@ func TestDecode(t *testing.T) {
 				SPort:                1000,
 				DPort:                9000,
 				IPTranslation: &network.IPTranslation{
-					ReplSrcIP:   util.AddressFromString("20.1.1.1"),
-					ReplDstIP:   util.AddressFromString("20.1.1.1"),
+					ReplSrcIP:   netaddr.MustParseIP("20.1.1.1"),
+					ReplDstIP:   netaddr.MustParseIP("20.1.1.1"),
 					ReplSrcPort: 40,
 					ReplDstPort: 70,
 				},

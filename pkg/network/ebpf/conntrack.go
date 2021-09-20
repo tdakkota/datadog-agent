@@ -7,8 +7,19 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/DataDog/datadog-agent/pkg/process/util"
+	"inet.af/netaddr"
 )
+
+// IPv4 returns an IPv4 version of In6Addr as a netaddr.IP
+func (a In6Addr) IPv4() netaddr.IP {
+	return netaddr.IPv4(a.U[12], a.U[13], a.U[14], a.U[15])
+}
+
+// IPv6 returns an IPv6 version of In6Addr as a netaddr.IP
+func (a In6Addr) IPv6() netaddr.IP {
+	// use raw here to preserve 4over6 traffic as IPv6
+	return netaddr.IPv6Raw(a.U)
+}
 
 // Family returns whether a tuple is IPv4 or IPv6
 func (t ConntrackTuple) Family() ConnFamily {
@@ -27,11 +38,11 @@ func (t ConntrackTuple) Type() ConnType {
 }
 
 // SourceAddress returns the source address
-func (t ConntrackTuple) SourceAddress() util.Address {
+func (t ConntrackTuple) SourceAddress() netaddr.IP {
 	if t.Family() == IPv6 {
-		return util.V6Address(t.Saddr_l, t.Saddr_h)
+		return t.Saddr.IPv6()
 	}
-	return util.V4Address(uint32(t.Saddr_l))
+	return t.Saddr.IPv4()
 }
 
 // SourceEndpoint returns the source address and source port joined
@@ -40,11 +51,11 @@ func (t ConntrackTuple) SourceEndpoint() string {
 }
 
 // DestAddress returns the destination address
-func (t ConntrackTuple) DestAddress() util.Address {
+func (t ConntrackTuple) DestAddress() netaddr.IP {
 	if t.Family() == IPv6 {
-		return util.V6Address(t.Daddr_l, t.Daddr_h)
+		return t.Daddr.IPv6()
 	}
-	return util.V4Address(uint32(t.Daddr_l))
+	return t.Daddr.IPv4()
 }
 
 // DestEndpoint returns the destination address and source port joined
@@ -61,4 +72,16 @@ func (t ConntrackTuple) String() string {
 		t.DestEndpoint(),
 		t.Netns,
 	)
+}
+
+// FromIP updates the In6Addr from the netaddr.IP provided.
+func (a *In6Addr) FromIP(ip netaddr.IP) {
+	if ip.Is4() {
+		var z [12]byte
+		copy(a.U[:12], z[:])
+		b := ip.As4()
+		copy(a.U[12:], b[:])
+	} else {
+		a.U = ip.As16()
+	}
 }

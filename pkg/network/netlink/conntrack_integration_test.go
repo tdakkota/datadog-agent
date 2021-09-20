@@ -9,31 +9,31 @@ import (
 	"net"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-
 	"github.com/DataDog/datadog-agent/pkg/network/netlink/testutil"
 	nettestutil "github.com/DataDog/datadog-agent/pkg/network/testutil"
 	"github.com/DataDog/datadog-agent/pkg/process/util"
 	ct "github.com/florianl/go-conntrack"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
+	"inet.af/netaddr"
 )
 
 func TestConntrackExists(t *testing.T) {
 	defer testutil.TeardownCrossNsDNAT(t)
 	testutil.SetupCrossNsDNAT(t)
 
-	tcpCloser := nettestutil.StartServerTCPNs(t, net.ParseIP("2.2.2.4"), 8080, "test")
+	tcpCloser := nettestutil.StartServerTCPNs(t, netaddr.MustParseIP("2.2.2.4"), 8080, "test")
 	defer tcpCloser.Close()
 
-	udpCloser := nettestutil.StartServerUDPNs(t, net.ParseIP("2.2.2.4"), 8080, "test")
+	udpCloser := nettestutil.StartServerUDPNs(t, netaddr.MustParseIP("2.2.2.4"), 8080, "test")
 	defer udpCloser.Close()
 
-	tcpConn := nettestutil.PingTCP(t, net.ParseIP("2.2.2.4"), 80)
+	tcpConn := nettestutil.PingTCP(t, netaddr.MustParseIP("2.2.2.4"), 80)
 	defer tcpConn.Close()
 
-	udpConn := nettestutil.PingUDP(t, net.ParseIP("2.2.2.4"), 80)
+	udpConn := nettestutil.PingUDP(t, netaddr.MustParseIP("2.2.2.4"), 80)
 	defer udpConn.Close()
 
 	testNs, err := netns.GetFromName("test")
@@ -79,15 +79,15 @@ func TestConntrackExistsRootDNAT(t *testing.T) {
 	defer rootNs.Close()
 
 	destIP := "10.10.1.1"
-	destPort := 80
+	destPort := uint16(80)
 	var tcpCloser io.Closer
 	_ = util.WithNS("/proc", testNs, func() error {
-		tcpCloser = nettestutil.StartServerTCP(t, net.ParseIP("2.2.2.4"), 8080)
+		tcpCloser = nettestutil.StartServerTCP(t, netaddr.MustParseIP("2.2.2.4"), 8080)
 		return nil
 	})
 	defer tcpCloser.Close()
 
-	tcpConn := nettestutil.PingTCP(t, net.ParseIP(destIP), destPort)
+	tcpConn := nettestutil.PingTCP(t, netaddr.MustParseIP(destIP), destPort)
 	defer tcpConn.Close()
 
 	rootck, err := NewConntrack(int(rootNs))
@@ -99,7 +99,7 @@ func TestConntrackExistsRootDNAT(t *testing.T) {
 	tcpLaddr := tcpConn.LocalAddr().(*net.TCPAddr)
 	c := &Con{
 		Con: ct.Con{
-			Origin: newIPTuple(tcpLaddr.IP.String(), destIP, uint16(tcpLaddr.Port), uint16(destPort), unix.IPPROTO_TCP),
+			Origin: newIPTuple(tcpLaddr.IP.String(), destIP, uint16(tcpLaddr.Port), destPort, unix.IPPROTO_TCP),
 		},
 	}
 

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"net"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,12 +18,12 @@ import (
 	netebpf "github.com/DataDog/datadog-agent/pkg/network/ebpf"
 	"github.com/DataDog/datadog-agent/pkg/network/ebpf/probes"
 	"github.com/DataDog/datadog-agent/pkg/network/netlink"
-	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 	"github.com/DataDog/ebpf"
 	"github.com/DataDog/ebpf/manager"
 	ct "github.com/florianl/go-conntrack"
 	"golang.org/x/sys/unix"
+	"inet.af/netaddr"
 )
 
 var tuplePool = sync.Pool{
@@ -172,18 +171,24 @@ func formatKey(netns uint32, tuple *ct.IPTuple) *netebpf.ConntrackTuple {
 		Sport: *tuple.Proto.SrcPort,
 		Dport: *tuple.Proto.DstPort,
 	}
-	src := util.AddressFromNetIP(*tuple.Src)
-	nct.Saddr_l, nct.Saddr_h = util.ToLowHigh(src)
-	nct.Daddr_l, nct.Daddr_h = util.ToLowHigh(util.AddressFromNetIP(*tuple.Dst))
-
-	switch len(src.Bytes()) {
-	case net.IPv4len:
-		nct.Metadata |= uint32(netebpf.IPv4)
-	case net.IPv6len:
-		nct.Metadata |= uint32(netebpf.IPv6)
-	default:
+	src, ok := netaddr.FromStdIP(*tuple.Src)
+	if !ok {
 		return nil
 	}
+	dst, ok := netaddr.FromStdIP(*tuple.Dst)
+	if !ok {
+		return nil
+	}
+
+	nct.Saddr.FromIP(src)
+	nct.Daddr.FromIP(dst)
+
+	if src.Is4() {
+		nct.Metadata |= uint32(netebpf.IPv4)
+	} else {
+		nct.Metadata |= uint32(netebpf.IPv6)
+	}
+
 	switch proto {
 	case network.TCP:
 		nct.Metadata |= uint32(netebpf.TCP)
@@ -198,8 +203,8 @@ func toConntrackTupleFromStats(src *netebpf.ConntrackTuple, stats *network.Conne
 	src.Netns = stats.NetNS
 	src.Sport = stats.SPort
 	src.Dport = stats.DPort
-	src.Saddr_l, src.Saddr_h = util.ToLowHigh(stats.Source)
-	src.Daddr_l, src.Daddr_h = util.ToLowHigh(stats.Dest)
+	src.Saddr.FromIP(stats.Source)
+	src.Daddr.FromIP(stats.Dest)
 	src.Metadata = 0
 	switch stats.Type {
 	case network.TCP:

@@ -12,17 +12,18 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 	"github.com/golang/groupcache/lru"
 	"github.com/vishvananda/netlink"
+	"inet.af/netaddr"
 )
 
 type routeKey struct {
-	source, dest util.Address
+	source, dest netaddr.IP
 	netns        uint32
 	connFamily   ConnectionFamily
 }
 
 // Route stores info for a route table entry
 type Route struct {
-	Gateway util.Address
+	Gateway netaddr.IP
 	IfIndex int
 }
 
@@ -42,12 +43,12 @@ const defaultTTL = 2 * time.Minute
 
 // RouteCache is the interface to a cache that stores routes for a given (source, destination, net ns) tuple
 type RouteCache interface {
-	Get(source, dest util.Address, netns uint32) (Route, bool)
+	Get(source, dest netaddr.IP, netns uint32) (Route, bool)
 }
 
 // Router is an interface to get a route for a (source, destination, net ns) tuple
 type Router interface {
-	Route(source, dest util.Address, netns uint32) (Route, bool)
+	Route(source, dest netaddr.IP, netns uint32) (Route, bool)
 }
 
 // NewRouteCache creates a new RouteCache
@@ -68,7 +69,7 @@ func newRouteCache(size int, router Router, ttl time.Duration) *routeCache {
 	}
 }
 
-func (c *routeCache) Get(source, dest util.Address, netns uint32) (Route, bool) {
+func (c *routeCache) Get(source, dest netaddr.IP, netns uint32) (Route, bool) {
 	c.Lock()
 	defer c.Unlock()
 
@@ -94,13 +95,12 @@ func (c *routeCache) Get(source, dest util.Address, netns uint32) (Route, bool) 
 	return Route{}, false
 }
 
-func newRouteKey(source, dest util.Address, netns uint32) routeKey {
+func newRouteKey(source, dest netaddr.IP, netns uint32) routeKey {
 	k := routeKey{netns: netns, source: source, dest: dest}
 
-	switch len(dest.Bytes()) {
-	case 4:
+	if dest.Is4() {
 		k.connFamily = AFINET
-	case 16:
+	} else if dest.Is6() {
 		k.connFamily = AFINET6
 	}
 	return k
@@ -122,7 +122,7 @@ func NewNetlinkRouter(procRoot string) (Router, error) {
 	}, nil
 }
 
-func (n *netlinkRouter) Route(source, dest util.Address, netns uint32) (Route, bool) {
+func (n *netlinkRouter) Route(source, dest netaddr.IP, netns uint32) (Route, bool) {
 	var iifName string
 
 	srcBuf := util.IPBufferPool.Get().([]byte)
@@ -132,7 +132,7 @@ func (n *netlinkRouter) Route(source, dest util.Address, netns uint32) (Route, b
 		util.IPBufferPool.Put(dstBuf)
 	}()
 
-	srcIP := util.NetIPFromAddress(source, srcBuf)
+	srcIP := util.NetIPFromIP(source, srcBuf)
 	if n.rootNs != netns {
 		// if its a non-root ns, we're dealing with traffic from
 		// a container most likely, and so need to find out
@@ -155,7 +155,7 @@ func (n *netlinkRouter) Route(source, dest util.Address, netns uint32) (Route, b
 		}
 	}
 
-	dstIP := util.NetIPFromAddress(dest, dstBuf)
+	dstIP := util.NetIPFromIP(dest, dstBuf)
 	routes, err := netlink.RouteGetWithOptions(
 		dstIP,
 		&netlink.RouteGetOptions{
@@ -170,8 +170,9 @@ func (n *netlinkRouter) Route(source, dest util.Address, netns uint32) (Route, b
 
 	r := routes[0]
 	log.Tracef("route for src=%s dst=%s: scope=%s gw=%+v if=%d", source, dest, r.Scope, r.Gw, r.LinkIndex)
+	ip, _ := netaddr.FromStdIPRaw(r.Gw)
 	return Route{
-		Gateway: util.AddressFromNetIP(r.Gw),
+		Gateway: ip,
 		IfIndex: r.LinkIndex,
 	}, true
 }

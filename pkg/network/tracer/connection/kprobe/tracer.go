@@ -16,7 +16,6 @@ import (
 	netebpf "github.com/DataDog/datadog-agent/pkg/network/ebpf"
 	"github.com/DataDog/datadog-agent/pkg/network/ebpf/probes"
 	"github.com/DataDog/datadog-agent/pkg/network/tracer/connection"
-	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 	"github.com/DataDog/ebpf"
 	"github.com/DataDog/ebpf/manager"
@@ -213,8 +212,8 @@ func (t *kprobeTracer) Remove(conn *network.ConnectionStats) error {
 	t.removeTuple.Dport = conn.DPort
 	t.removeTuple.Netns = conn.NetNS
 	t.removeTuple.Pid = conn.Pid
-	t.removeTuple.Saddr_l, t.removeTuple.Saddr_h = util.ToLowHigh(conn.Source)
-	t.removeTuple.Daddr_l, t.removeTuple.Daddr_h = util.ToLowHigh(conn.Dest)
+	t.removeTuple.Saddr.FromIP(conn.Source)
+	t.removeTuple.Daddr.FromIP(conn.Dest)
 
 	if conn.Family == network.AFINET6 {
 		t.removeTuple.Metadata = uint32(netebpf.IPv6)
