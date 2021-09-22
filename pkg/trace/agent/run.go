@@ -31,7 +31,6 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/util"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 	"github.com/DataDog/datadog-agent/pkg/util/profiling"
-	"gopkg.in/DataDog/dd-trace-go.v1/profiler"
 )
 
 const messageAgentDisabled = `trace-agent not enabled. Set the environment variable
@@ -197,7 +196,6 @@ func runProfiling(cfg *config.AgentConfig) {
 	settings := profiling.Settings{
 		Site:                 fmt.Sprintf("https://intake.profile.%s/v1/input", site),
 		Period:               profiling.DefaultProfilingPeriod,
-		CPUDuration:          profiler.DefaultDuration,
 		Tags:                 []string{fmt.Sprintf("version:%s", info.Version)},
 		MutexProfileFraction: coreconfig.Datadog.GetInt("internal_profiling.mutex_profile_fraction"),
 		BlockProfileRate:     coreconfig.Datadog.GetInt("internal_profiling.block_profile_rate"),
