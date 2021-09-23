@@ -15,9 +15,9 @@ func IsSensitive(b []byte) bool {
 		// fast path: only valid characters are 0-9, space (" ") and dash("-")
 		return false
 	}
-	i := 0               // byte index for traversing b
-	num := 0             // holds b[:i] digits as a numeric value (for example []byte{"523"} becomes int(523))
-	count := 0           // digit count (excluding white space)
+	i := 0      // byte index for traversing b
+	prefix := 0 // holds up to b[:6] digits as a numeric value (for example []byte{"523"} becomes int(523)) for checking prefixes
+	count := 0
 	foundPrefix := false // reports whether we've detected a valid prefix
 loop:
 	for i < len(b) {
@@ -34,11 +34,12 @@ loop:
 			// not a 0 to 9 digit; can not be a credit card number; abort
 			return false
 		}
+		count++
 		if !foundPrefix {
 			// we have not yet found a valid prefix so we convert the digits
 			// that we have so far into a numeric value:
-			num = num*10 + (int(b[i]) - 0x30)
-			maybe, yes := validCardPrefix(num)
+			prefix = prefix*10 + (int(b[i]) - 0x30)
+			maybe, yes := validCardPrefix(prefix)
 			if yes {
 				// we've found a valid prefix; continue counting
 				foundPrefix = true
@@ -47,7 +48,6 @@ loop:
 				return false
 			}
 		}
-		count++
 		if count > 16 {
 			// too many digits
 			return false
@@ -61,17 +61,54 @@ loop:
 	return foundPrefix
 }
 
-// validCardPrefix validates whether b is a valid card prefix. It is expected
-// to be strictly numeric within byte range 0x30-0x39. Maybe returns true if
-// the prefix could be an IIN once more digits are revealed and yes reports
-// whether b is a fully valid IIN.
+// luhnValid checks that the number represented in the given string validates the Luhn Checksum algorithm.
+// str is expected to contain exclusively digits at all positions.
 //
-// If yes is false and maybe is false, there is no reason to continue searching.
+// See:
+// • https://en.wikipedia.org/wiki/Luhn_algorithm
+// • https://dev.to/shiraazm/goluhn-a-simple-library-for-generating-calculating-and-verifying-luhn-numbers-588j
+//
+func luhnValid(str string) bool {
+	var (
+		sum int
+		alt bool
+	)
+	n := len(str)
+	for i := n - 1; i > -1; i-- {
+		if str[i] < 0x30 || str[i] > 0x39 {
+			return false // not a number!
+		}
+		mod := int(str[i] - 0x30) // convert byte to int
+		if alt {
+			mod *= 2
+			if mod > 9 {
+				mod = (mod % 10) + 1
+			}
+		}
+		alt = !alt
+		sum += mod
+	}
+	return sum%10 == 0
+}
+
+// validCardPrefix validates whether b is a valid card prefix. Maybe returns true if
+// the prefix could be an IIN once more digits are revealed and yes reports whether
+// b is a fully valid IIN.
+//
+// If yes is false and maybe is false, there is no reason to continue searching. The
+// prefix is invalid.
+//
+// IMPORTANT: If adding new prefixes to this algorithm, make sure that you update
+// the "maybe" clauses above, in the shorter prefixes than the one you are adding.
+// This refers to the cases which return true, false.
+//
+// TODO(x): this whole code could be code generated from a prettier data structure.
+// Ultimately, it could even be customer-configurable.
 func validCardPrefix(n int) (maybe, yes bool) {
 	// Validates IIN prefix possibilities
 	// Source: https://www.regular-expressions.info/creditcard.html
 	if n > 699999 {
-		// too long for any known prefix
+		// too long for any known prefix; stop looking
 		return false, false
 	}
 	if n < 10 {
@@ -112,7 +149,7 @@ func validCardPrefix(n int) (maybe, yes bool) {
 		if (n >= 352 && n <= 358) || n == 501 || n == 601 ||
 			(n >= 222 && n <= 272) || (n >= 500 && n <= 509) ||
 			(n >= 560 && n <= 589) || (n >= 600 && n <= 699) {
-			// 352-358, 501, 601, 222-272, 500-509, 560-589, 600-699 may be IIN
+			// 352-358, 501, 601, 222-272, 500-509, 560-589, 600-699 may be a 4 or 6 digit IIN prefix
 			return true, false
 		}
 	}
@@ -125,6 +162,7 @@ func validCardPrefix(n int) (maybe, yes bool) {
 		}
 		if (n >= 2221 && n <= 2720) || (n >= 5000 && n <= 5099) ||
 			(n >= 5600 && n <= 5899) || (n >= 6000 && n <= 6999) {
+			// maybe a 6-digit IIN
 			return true, false
 		}
 	}
