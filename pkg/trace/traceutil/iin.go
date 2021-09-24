@@ -1,16 +1,65 @@
 package traceutil
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/DataDog/datadog-agent/pkg/trace/config/features"
+	"github.com/DataDog/datadog-agent/pkg/trace/pb"
+)
+
+func init() {
+	if !features.Has("pci_cc") {
+		return
+	}
+	pb.RegisterMetaHook(func(k, v string) string {
+		switch k {
+		case "_sample_rate",
+			"_sampling_priority_v1",
+			"error",
+			"error.msg",
+			"error.type",
+			"error.stack",
+			"env",
+			"graphql.field",
+			"graphql.query",
+			"graphql.type",
+			"graphql.operation.name",
+			"grpc.code",
+			"grpc.method",
+			"grpc.request",
+			"http.status_code",
+			"http.method",
+			"runtime-id",
+			"out.host",
+			"out.port",
+			"sampling.priority",
+			"span.type",
+			"span.name",
+			"service.name",
+			"service",
+			"sql.query",
+			"version":
+			return v
+		}
+		if strings.HasPrefix(k, "_dd") {
+			return v
+		}
+		if IsSensitive(v) {
+			return "?"
+		}
+		return v
+	})
+}
 
 // IsSensitive reports whether b is susceptile to containing PCI
 // sensitive data such as credit card information.
-func IsSensitive(b []byte) (ok bool) {
+func IsSensitive(b string) (ok bool) {
 	return isSensitive(b, false)
 }
 
 // isSensitve checks if b could be a credit card number by checking the digit count and IIN prefix.
 // If validateLuhn is true, the Luhn checksum is also applied to potential candidates.
-func isSensitive(b []byte, validateLuhn bool) (ok bool) {
+func isSensitive(b string, validateLuhn bool) (ok bool) {
 	//
 	// Just credit card numbers for now, based on:
 	// • https://baymard.com/checkout-usability/credit-card-patterns
