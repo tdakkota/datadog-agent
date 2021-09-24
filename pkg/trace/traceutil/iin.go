@@ -1,8 +1,16 @@
 package traceutil
 
+import "strings"
+
 // IsSensitive reports whether b is susceptile to containing PCI
 // sensitive data such as credit card information.
-func IsSensitive(b []byte) bool {
+func IsSensitive(b []byte) (ok bool) {
+	return isSensitive(b, false)
+}
+
+// isSensitve checks if b could be a credit card number by checking the digit count and IIN prefix.
+// If validateLuhn is true, the Luhn checksum is also applied to potential candidates.
+func isSensitive(b []byte, validateLuhn bool) (ok bool) {
 	//
 	// Just credit card numbers for now, based on:
 	// • https://baymard.com/checkout-usability/credit-card-patterns
@@ -15,10 +23,26 @@ func IsSensitive(b []byte) bool {
 		// fast path: only valid characters are 0-9, space (" ") and dash("-")
 		return false
 	}
-	i := 0      // byte index for traversing b
-	prefix := 0 // holds up to b[:6] digits as a numeric value (for example []byte{"523"} becomes int(523)) for checking prefixes
-	count := 0
-	foundPrefix := false // reports whether we've detected a valid prefix
+	i := 0                      // byte index for traversing b
+	prefix := 0                 // holds up to b[:6] digits as a numeric value (for example []byte{"523"} becomes int(523)) for checking prefixes
+	count := 0                  // counts digits encountered
+	foundPrefix := false        // reports whether we've detected a valid prefix
+	recdigit := func(_ byte) {} // callback on each found digit; no-op by default (we only need this for Luhn)
+	if validateLuhn {
+		// we need Luhn checksum validation, so we have to take additional action
+		// and record all digits found
+		var buf strings.Builder
+		recdigit = func(b byte) { buf.WriteByte(b) }
+		defer func() {
+			if !ok {
+				// if isSensitive returned false, it means that b can not be
+				// a credit card number
+				return
+			}
+			// potentially a credit card number, run the Luhn checksum
+			ok = luhnValid(buf.String())
+		}()
+	}
 loop:
 	for i < len(b) {
 		// We traverse and search b for a valid IIN credit card prefix based
@@ -35,6 +59,7 @@ loop:
 			return false
 		}
 		count++
+		recdigit(b[i])
 		if !foundPrefix {
 			// we have not yet found a valid prefix so we convert the digits
 			// that we have so far into a numeric value:

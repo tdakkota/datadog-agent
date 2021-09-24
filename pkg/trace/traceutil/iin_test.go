@@ -265,3 +265,16 @@ func TestIINIsSensitive(t *testing.T) {
 		}
 	})
 }
+
+func BenchmarkIsSensitive(b *testing.B) {
+	run := func(str string, luhn bool) func(b *testing.B) {
+		return func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				isSensitive([]byte(str), luhn)
+			}
+		}
+	}
+
+	b.Run("basic", run("4001 0200 0000 0009", false))
+	b.Run("luhn", run("4001 0200 0000 0009", true))
+}
