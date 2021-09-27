@@ -9,6 +9,7 @@ package obfuscate
 
 import (
 	"bytes"
+	"fmt"
 	"sync/atomic"
 
 	"github.com/DataDog/datadog-agent/pkg/trace/config"
@@ -22,10 +23,11 @@ import (
 // concurrent use.
 type Obfuscator struct {
 	opts                 *config.ObfuscationConfig
-	es                   *jsonObfuscator // nil if disabled
-	mongo                *jsonObfuscator // nil if disabled
-	sqlExecPlan          *jsonObfuscator // nil if disabled
-	sqlExecPlanNormalize *jsonObfuscator // nil if disabled
+	es                   *jsonObfuscator       // nil if disabled
+	mongo                *jsonObfuscator       // nil if disabled
+	sqlExecPlan          *jsonObfuscator       // nil if disabled
+	sqlExecPlanNormalize *jsonObfuscator       // nil if disabled
+	creditCards          *creditCardObfuscator // nil if disabled
 	// sqlLiteralEscapes reports whether we should treat escape characters literally or as escape characters.
 	// A non-zero value means 'yes'. Different SQL engines behave in different ways and the tokenizer needs
 	// to be generic.
@@ -76,6 +78,10 @@ func NewObfuscator(cfg *config.ObfuscationConfig) *Obfuscator {
 	}
 	if cfg.SQLExecPlanNormalize.Enabled {
 		o.sqlExecPlanNormalize = newJSONObfuscator(&cfg.SQLExecPlanNormalize, &o)
+	}
+	fmt.Printf("\n\n%#v\n\n\n", cfg.CreditCards)
+	if cfg.CreditCards.Enabled {
+		o.creditCards = newCreditCardsObfuscator(cfg.CreditCards.Luhn)
 	}
 	return &o
 }

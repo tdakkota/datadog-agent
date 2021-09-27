@@ -29,6 +29,8 @@ func setupAPM(config Config) {
 	config.SetKnown("apm_config.obfuscation.remove_stack_traces")
 	config.SetKnown("apm_config.obfuscation.redis.enabled")
 	config.SetKnown("apm_config.obfuscation.memcached.enabled")
+	config.SetKnown("apm_config.obfuscation.credit_cards.enabled")
+	config.SetKnown("apm_config.obfuscation.credit_cards.luhn")
 	config.SetKnown("apm_config.filter_tags.require")
 	config.SetKnown("apm_config.filter_tags.reject")
 	config.SetKnown("apm_config.extra_sample_rate")
