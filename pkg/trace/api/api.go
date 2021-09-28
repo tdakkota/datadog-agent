@@ -377,14 +377,16 @@ func (r *HTTPReceiver) tagStats(v Version, header http.Header) *info.TagStats {
 	})
 }
 
-func decodeTraces(v Version, req *http.Request) (pb.Traces, error) {
+func decodeTraces(v Version, req *http.Request) (*decodedTraces, error) {
 	switch v {
 	case v01:
 		var spans []pb.Span
 		if err := json.NewDecoder(req.Body).Decode(&spans); err != nil {
 			return nil, err
 		}
-		return tracesFromSpans(spans), nil
+		return &decodedTraces{
+			Traces: tracesFromSpans(spans),
+		}, nil
 	case v05:
 		buf := getBuffer()
 		defer putBuffer(buf)
@@ -393,13 +395,12 @@ func decodeTraces(v Version, req *http.Request) (pb.Traces, error) {
 		}
 		var traces pb.Traces
 		err := traces.UnmarshalMsgDictionary(buf.Bytes())
-		return traces, err
+		return &decodedTraces{
+			Traces:  traces,
+			RanHook: true,
+		}, err
 	default:
-		var traces pb.Traces
-		if err := decodeRequest(req, &traces); err != nil {
-			return nil, err
-		}
-		return traces, nil
+		return decodeRequest(req)
 	}
 }
 
@@ -464,7 +465,7 @@ func (r *HTTPReceiver) handleTraces(v Version, w http.ResponseWriter, req *http.
 		return
 	}
 
-	traces, err := decodeTraces(v, req)
+	dectraces, err := decodeTraces(v, req)
 	if err != nil {
 		httpDecodingError(err, []string{"handler:traces", fmt.Sprintf("v:%s", v)}, w)
 		switch err {
@@ -484,6 +485,7 @@ func (r *HTTPReceiver) handleTraces(v Version, w http.ResponseWriter, req *http.
 	}
 	r.replyOK(v, w)
 
+	traces := dectraces.Traces
 	atomic.AddInt64(&ts.TracesReceived, int64(len(traces)))
 	atomic.AddInt64(&ts.TracesBytes, req.Body.(*apiutil.LimitedReader).Count)
 	atomic.AddInt64(&ts.PayloadAccepted, 1)
@@ -497,6 +499,7 @@ func (r *HTTPReceiver) handleTraces(v Version, w http.ResponseWriter, req *http.
 		ClientComputedTopLevel: req.Header.Get(headerComputedTopLevel) != "",
 		ClientComputedStats:    req.Header.Get(headerComputedStats) != "",
 		ClientDroppedP0s:       droppedTracesFromHeader(req.Header, ts),
+		RunMetaHook:            !dectraces.RanHook,
 	}
 
 	select {
@@ -561,6 +564,10 @@ type Payload struct {
 
 	// ClientDroppedP0s specifies the number of P0 traces chunks dropped by the client.
 	ClientDroppedP0s int64
+
+	// RunMetaHook specifies whether the agent.Agent processor should run the pb.MetaHook
+	// See pb/trace/pb/hook.go
+	RunMetaHook bool
 }
 
 // handleServices handle a request with a list of several services
@@ -686,38 +693,52 @@ func (r *HTTPReceiver) Languages() string {
 	return strings.Join(str, "|")
 }
 
-func decodeRequest(req *http.Request, dest *pb.Traces) error {
+type decodedTraces struct {
+	// Traces contains the decoded request.
+	Traces pb.Traces
+	// RanHook reports whether the decoder was able to run the pb.MetaHook
+	// See pb/trace/pb/hook.go
+	RanHook bool
+}
+
+func decodeRequest(req *http.Request) (*decodedTraces, error) {
+	var dest pb.Traces
 	switch mediaType := getMediaType(req); mediaType {
 	case "application/msgpack":
 		buf := getBuffer()
 		defer putBuffer(buf)
 		_, err := io.Copy(buf, req.Body)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		_, err = dest.UnmarshalMsg(buf.Bytes())
-		return err
+		return &decodedTraces{
+			Traces:  dest,
+			RanHook: true,
+		}, err
 	case "application/json":
 		fallthrough
 	case "text/json":
 		fallthrough
 	case "":
-		return json.NewDecoder(req.Body).Decode(dest)
+		err := json.NewDecoder(req.Body).Decode(&dest)
+		return &decodedTraces{Traces: dest}, err
 	default:
 		// do our best
-		if err1 := json.NewDecoder(req.Body).Decode(dest); err1 != nil {
+		if err1 := json.NewDecoder(req.Body).Decode(&dest); err1 != nil {
 			buf := getBuffer()
 			defer putBuffer(buf)
 			_, err2 := io.Copy(buf, req.Body)
 			if err2 != nil {
-				return fmt.Errorf("could not decode JSON (%q), nor Msgpack (%q)", err1, err2)
+				return nil, err2
 			}
 			_, err2 = dest.UnmarshalMsg(buf.Bytes())
-			if err2 != nil {
-				return fmt.Errorf("could not decode JSON (%q), nor Msgpack (%q)", err1, err2)
-			}
+			return &decodedTraces{
+				Traces:  dest,
+				RanHook: true,
+			}, err2
 		}
-		return nil
+		return &decodedTraces{Traces: dest}, nil
 	}
 }
 

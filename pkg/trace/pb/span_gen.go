@@ -169,7 +169,11 @@ func (z *Span) UnmarshalMsg(bts []byte) (o []byte, err error) {
 					err = msgp.WrapError(err, "Meta", za0001)
 					return
 				}
-				z.Meta[za0001] = za0002
+				if metahook != nil {
+					z.Meta[za0001] = metahook(za0001, za0002)
+				} else {
+					z.Meta[za0001] = za0002
+				}
 			}
 		case "metrics":
 			if msgp.IsNil(bts) {

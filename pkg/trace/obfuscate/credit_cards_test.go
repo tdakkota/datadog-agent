@@ -1,4 +1,4 @@
-package traceutil
+package obfuscate
 
 import (
 	"fmt"
@@ -245,7 +245,7 @@ func TestIINIsSensitive(t *testing.T) {
 			"4001 0200 0000 0009",
 		} {
 			t.Run("", func(t *testing.T) {
-				assert.True(t, IsSensitive(valid), i)
+				assert.True(t, isCardNumber(valid, false), i)
 			})
 		}
 	})
@@ -261,7 +261,7 @@ func TestIINIsSensitive(t *testing.T) {
 			"7712378231899",
 			"   -  ",
 		} {
-			assert.False(t, IsSensitive(invalid), i)
+			assert.False(t, isCardNumber(invalid, false), i)
 		}
 	})
 }
@@ -270,7 +270,7 @@ func BenchmarkIsSensitive(b *testing.B) {
 	run := func(str string, luhn bool) func(b *testing.B) {
 		return func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				isSensitive(str, luhn)
+				isCardNumber(str, luhn)
 			}
 		}
 	}

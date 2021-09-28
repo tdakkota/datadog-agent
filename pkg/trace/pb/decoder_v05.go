@@ -3,6 +3,7 @@ package pb
 import (
 	"errors"
 	"fmt"
+
 	"github.com/tinylib/msgp/msgp"
 )
 
@@ -164,7 +165,11 @@ func (z *Span) UnmarshalMsgDictionary(bts []byte, dict []string) ([]byte, error)
 		if err != nil {
 			return bts, err
 		}
-		z.Meta[key] = val
+		if metahook != nil {
+			z.Meta[key] = metahook(key, val)
+		} else {
+			z.Meta[key] = val
+		}
 	}
 	// Metrics (10)
 	sz, bts, err = msgp.ReadMapHeaderBytes(bts)

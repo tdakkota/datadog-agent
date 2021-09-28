@@ -227,6 +227,15 @@ func (a *Agent) Process(p *api.Payload) {
 				traceutil.SetMeta(span, k, v)
 			}
 			a.obfuscator.Obfuscate(span)
+			if p.RunMetaHook {
+				if hook, ok := pb.MetaHook(); ok {
+					for k, v := range span.Meta {
+						if newv := hook(k, v); newv != v {
+							span.Meta[k] = newv
+						}
+					}
+				}
+			}
 			Truncate(span)
 			if p.ClientComputedTopLevel {
 				traceutil.UpdateTracerTopLevel(span)
