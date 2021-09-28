@@ -15,7 +15,7 @@ import (
 	"github.com/DataDog/ebpf/manager"
 )
 
-var sslProbes = []string{
+var openSSLProbes = []string{
 	"uprobe/SSL_set_bio",
 	"uprobe/SSL_set_fd",
 	"uprobe/SSL_read",
@@ -27,6 +27,16 @@ var sslProbes = []string{
 var cryptoProbes = []string{
 	"uprobe/BIO_new_socket",
 	"uretprobe/BIO_new_socket",
+}
+
+var gnuTLSProbes = []string{
+	"uprobe/gnutls_transport_set_int2",
+	"uprobe/gnutls_transport_set_ptr",
+	"uprobe/gnutls_transport_set_ptr2",
+	"uprobe/gnutls_record_recv",
+	"uretprobe/gnutls_record_recv",
+	"uprobe/gnutls_record_send",
+	"uprobe/gnutls_bye",
 }
 
 const (
@@ -141,13 +151,18 @@ func (o *openSSLProgram) Start() {
 	o.watcher = newSOWatcher(o.cfg.ProcRoot, o.perfHandler,
 		soRule{
 			re:           regexp.MustCompile(`libssl.so`),
-			registerCB:   addHooks(o.manager, sslProbes),
-			unregisterCB: removeHooks(o.manager, sslProbes),
+			registerCB:   addHooks(o.manager, openSSLProbes),
+			unregisterCB: removeHooks(o.manager, openSSLProbes),
 		},
 		soRule{
 			re:           regexp.MustCompile(`libcrypto.so`),
 			registerCB:   addHooks(o.manager, cryptoProbes),
 			unregisterCB: removeHooks(o.manager, cryptoProbes),
+		},
+		soRule{
+			re:           regexp.MustCompile(`libgnutls.so`),
+			registerCB:   addHooks(m, gnuTLSProbes),
+			unregisterCB: removeHooks(m, gnuTLSProbes),
 		},
 	)
 
