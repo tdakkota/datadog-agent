@@ -154,6 +154,7 @@ func (z *Span) UnmarshalMsgDictionary(bts []byte, dict []string) ([]byte, error)
 			delete(z.Meta, key)
 		}
 	}
+	hook, hookok := MetaHook()
 	for sz > 0 {
 		sz--
 		var key, val string
@@ -165,8 +166,8 @@ func (z *Span) UnmarshalMsgDictionary(bts []byte, dict []string) ([]byte, error)
 		if err != nil {
 			return bts, err
 		}
-		if metahook != nil {
-			z.Meta[key] = metahook(key, val)
+		if hookok {
+			z.Meta[key] = hook(key, val)
 		} else {
 			z.Meta[key] = val
 		}
