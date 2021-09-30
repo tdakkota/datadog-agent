@@ -38,6 +38,7 @@ const (
 	defaultLinuxDockerSocket       = "/var/run/docker.sock"
 	defaultWindowsDockerSocketPath = "//./pipe/docker_engine"
 	defaultLinuxContainerdSocket   = "/var/run/containerd/containerd.sock"
+	defaultWindowsContainerdSocket = "//./pipe/containerd-containerd"
 	defaultLinuxCrioSocket         = "/var/run/crio/crio.sock"
 	defaultHostMountPrefix         = "/host"
 	unixSocketPrefix               = "unix://"
@@ -184,6 +185,10 @@ func getDefaultDockerPaths() []string {
 }
 
 func getDefaultCriPaths() []string {
+	if runtime.GOOS == "windows" {
+		return []string{defaultWindowsContainerdSocket}
+	}
+
 	paths := []string{}
 	for _, prefix := range getHostMountPrefixes() {
 		paths = append(paths, path.Join(prefix, defaultLinuxContainerdSocket), path.Join(prefix, defaultLinuxCrioSocket))
