@@ -112,6 +112,11 @@ func (w *soWatcher) Start() {
 							libPath = hostPath
 						}
 
+						// TODO temporary: do not include this in PR
+						if withoutSymLinks, err := fp.EvalSymlinks(libPath); err == nil {
+							libPath = withoutSymLinks
+						}
+
 						if _, registered := w.registered[libPath]; registered {
 							break
 						}
