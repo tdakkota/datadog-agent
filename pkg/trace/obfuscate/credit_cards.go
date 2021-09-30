@@ -77,7 +77,6 @@ func isCardNumber(b string, validateLuhn bool) (ok bool) {
 		// fast path: only valid characters are 0-9, space (" ") and dash("-")
 		return false
 	}
-	i := 0                      // byte index for traversing b
 	prefix := 0                 // holds up to b[:6] digits as a numeric value (for example []byte{"523"} becomes int(523)) for checking prefixes
 	count := 0                  // counts digits encountered
 	foundPrefix := false        // reports whether we've detected a valid prefix
@@ -98,14 +97,13 @@ func isCardNumber(b string, validateLuhn bool) (ok bool) {
 		}()
 	}
 loop:
-	for i < len(b) {
+	for i := range b {
 		// We traverse and search b for a valid IIN credit card prefix based
 		// on the digits found, ignoring spaces and dashes.
 		// Source: https://www.regular-expressions.info/creditcard.html
 		switch b[i] {
 		case ' ', '-':
 			// ignore space (' ') and dash ('-')
-			i++
 			continue loop
 		}
 		if b[i] < '0' || b[i] > '9' {
@@ -131,7 +129,6 @@ loop:
 			// too many digits
 			return false
 		}
-		i++
 	}
 	if count < 12 {
 		// too few digits
