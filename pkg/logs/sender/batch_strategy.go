@@ -7,9 +7,11 @@ package sender
 
 import (
 	"context"
-	"github.com/DataDog/datadog-agent/pkg/telemetry"
 	"sync"
 	"time"
+
+	"github.com/DataDog/datadog-agent/pkg/telemetry"
+	"github.com/benbjohnson/clock"
 
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 
@@ -32,12 +34,17 @@ type batchStrategy struct {
 	pendingSends     sync.WaitGroup // waitgroup for concurrent sends
 	syncFlushTrigger chan struct{}  // trigger a synchronous flush
 	syncFlushDone    chan struct{}  // wait for a synchronous flush to finish
+	clock            clock.Clock
 }
 
 // NewBatchStrategy returns a new batch concurrent strategy with the specified batch & content size limits
 // If `maxConcurrent` > 0, then at most that many payloads will be sent concurrently, else there is no concurrency
 // and the pipeline will block while sending each payload.
 func NewBatchStrategy(serializer Serializer, batchWait time.Duration, maxConcurrent int, maxBatchSize int, maxContentSize int, pipelineName string) Strategy {
+	return newBatchStrategyWithClock(serializer, batchWait, maxConcurrent, maxBatchSize, maxContentSize, pipelineName, clock.New())
+}
+
+func newBatchStrategyWithClock(serializer Serializer, batchWait time.Duration, maxConcurrent int, maxBatchSize int, maxContentSize int, pipelineName string, clock clock.Clock) Strategy {
 	if maxConcurrent < 0 {
 		maxConcurrent = 0
 	}
@@ -49,6 +56,7 @@ func NewBatchStrategy(serializer Serializer, batchWait time.Duration, maxConcurr
 		syncFlushTrigger: make(chan struct{}),
 		syncFlushDone:    make(chan struct{}),
 		pipelineName:     pipelineName,
+		clock:            clock,
 	}
 
 }
@@ -83,7 +91,7 @@ func (s *batchStrategy) syncFlush(inputChan chan *message.Message, outputChan ch
 
 // Send accumulates messages to a buffer and sends them when the buffer is full or outdated.
 func (s *batchStrategy) Send(inputChan chan *message.Message, outputChan chan *message.Message, send func([]byte) error) {
-	flushTicker := time.NewTicker(s.batchWait)
+	flushTicker := s.clock.Ticker(s.batchWait)
 	defer func() {
 		s.flushBuffer(outputChan, send)
 		flushTicker.Stop()
