@@ -245,7 +245,7 @@ func TestIINIsSensitive(t *testing.T) {
 			"4001 0200 0000 0009",
 		} {
 			t.Run("", func(t *testing.T) {
-				assert.True(t, isCardNumber(valid, false), i)
+				assert.True(t, isCardNumber(valid, true), i)
 			})
 		}
 	})

@@ -73,7 +73,7 @@ func isCardNumber(b string, validateLuhn bool) (ok bool) {
 	if len(b) == 0 {
 		return false
 	}
-	if b[0] != 0x20 && b[0] != 0x2d && (b[0] < 0x30 || b[0] > 0x39) {
+	if b[0] != ' ' && b[0] != '-' && (b[0] < '0' || b[0] > '9') {
 		// fast path: only valid characters are 0-9, space (" ") and dash("-")
 		return false
 	}
@@ -85,8 +85,8 @@ func isCardNumber(b string, validateLuhn bool) (ok bool) {
 	if validateLuhn {
 		// we need Luhn checksum validation, so we have to take additional action
 		// and record all digits found
-		var buf strings.Builder
-		recdigit = func(b byte) { buf.WriteByte(b) }
+		buf := make([]byte, 0, len(b))
+		recdigit = func(b byte) { buf = append(buf, b) }
 		defer func() {
 			if !ok {
 				// if isCardNumber returned false, it means that b can not be
@@ -94,7 +94,7 @@ func isCardNumber(b string, validateLuhn bool) (ok bool) {
 				return
 			}
 			// potentially a credit card number, run the Luhn checksum
-			ok = luhnValid(buf.String())
+			ok = luhnValid(buf)
 		}()
 	}
 loop:
@@ -103,12 +103,12 @@ loop:
 		// on the digits found, ignoring spaces and dashes.
 		// Source: https://www.regular-expressions.info/creditcard.html
 		switch b[i] {
-		case 0x20, 0x2d:
+		case ' ', '-':
 			// ignore space (' ') and dash ('-')
 			i++
 			continue loop
 		}
-		if b[i] < 0x30 || b[i] > 0x39 {
+		if b[i] < '0' || b[i] > '9' {
 			// not a 0 to 9 digit; can not be a credit card number; abort
 			return false
 		}
@@ -117,7 +117,7 @@ loop:
 		if !foundPrefix {
 			// we have not yet found a valid prefix so we convert the digits
 			// that we have so far into a numeric value:
-			prefix = prefix*10 + (int(b[i]) - 0x30)
+			prefix = prefix*10 + (int(b[i]) - '0')
 			maybe, yes := validCardPrefix(prefix)
 			if yes {
 				// we've found a valid prefix; continue counting
@@ -147,14 +147,14 @@ loop:
 // • https://en.wikipedia.org/wiki/Luhn_algorithm
 // • https://dev.to/shiraazm/goluhn-a-simple-library-for-generating-calculating-and-verifying-luhn-numbers-588j
 //
-func luhnValid(str string) bool {
+func luhnValid(str []byte) bool {
 	var (
 		sum int
 		alt bool
 	)
 	n := len(str)
 	for i := n - 1; i > -1; i-- {
-		if str[i] < 0x30 || str[i] > 0x39 {
+		if str[i] < '0' || str[i] > '9' {
 			return false // not a number!
 		}
 		mod := int(str[i] - 0x30) // convert byte to int
