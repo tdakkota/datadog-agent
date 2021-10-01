@@ -167,11 +167,11 @@ func (ns *networkState) GetDelta(
 			// We force last stats to be 0 on a new client this is purely to
 			// have a coherent definition of LastXYZ and should not have an impact
 			// on collection since we drop the first get in the process-agent
-			c.LastSentBytes = 0
-			c.LastRecvBytes = 0
-			c.LastRetransmits = 0
-			c.LastTCPEstablished = 0
-			c.LastTCPClosed = 0
+			c.SentBytes = 0
+			c.RecvBytes = 0
+			c.Retransmits = 0
+			c.TCPEstablished = 0
+			c.TCPClosed = 0
 		}
 
 		ns.determineConnectionIntraHost(active)
@@ -432,9 +432,9 @@ func (ns *networkState) mergeConnections(id string, active map[string]*Connectio
 				// We also update the counters to reflect only the active connection
 				// The monotonic counters will be the sum of all connections that cross our interval start + finish.
 				if stats, ok := client.stats[key]; ok {
-					stats.totalRetransmits = activeConn.MonotonicRetransmits
-					stats.totalSent = activeConn.MonotonicSentBytes
-					stats.totalRecv = activeConn.MonotonicRecvBytes
+					stats.totalRetransmits = activeConn.Retransmits
+					stats.totalSent = activeConn.SentBytes
+					stats.totalRecv = activeConn.RecvBytes
 				}
 			} else {
 				// Else the closed connection and the active connection have the same epoch
@@ -468,74 +468,64 @@ func (ns *networkState) mergeConnections(id string, active map[string]*Connectio
 // This is used to update the stats when we process a closed connection that became active again
 // in this case we want the stats to reflect the new active connections in order to avoid resets
 func (ns *networkState) updateConnWithStatWithActiveConn(client *client, key string, active ConnectionStats, closed *ConnectionStats) {
-	if st, ok := client.stats[key]; ok {
-		// Check for underflows
-		ns.handleStatsUnderflow(key, st, closed)
-
-		closed.LastSentBytes = closed.MonotonicSentBytes - st.totalSent
-		closed.LastRecvBytes = closed.MonotonicRecvBytes - st.totalRecv
-		closed.LastSentPackets = closed.MonotonicSentPackets - st.totalSentPackets
-		closed.LastRecvPackets = closed.MonotonicRecvPackets - st.totalRecvPackets
-
-		closed.LastRetransmits = closed.MonotonicRetransmits - st.totalRetransmits
-		closed.LastTCPEstablished = closed.LastTCPEstablished - st.totalTCPEstablished
-		closed.LastTCPClosed = closed.LastTCPClosed - st.totalTCPClosed
-
-		// Update stats object with latest values
-		st.totalSent = active.MonotonicSentBytes
-		st.totalRecv = active.MonotonicRecvBytes
-		st.totalRecvPackets = active.MonotonicRecvPackets
-		st.totalSentPackets = active.MonotonicSentBytes
-		st.totalRetransmits = active.MonotonicRetransmits
-		st.totalTCPEstablished = active.MonotonicTCPEstablished
-		st.totalTCPClosed = active.MonotonicTCPClosed
-	} else {
-		closed.LastSentBytes = closed.MonotonicSentBytes
-		closed.LastRecvBytes = closed.MonotonicRecvBytes
-		closed.LastRecvPackets = closed.MonotonicRecvPackets
-		closed.LastSentPackets = closed.MonotonicSentPackets
-
-		closed.LastRetransmits = closed.MonotonicRetransmits
-		closed.LastTCPEstablished = closed.MonotonicTCPEstablished
-		closed.LastTCPClosed = closed.MonotonicTCPClosed
+	st, ok := client.stats[key]
+	if !ok {
+		return
 	}
+
+	// Check for underflows
+	ns.handleStatsUnderflow(key, st, closed)
+
+	closed.SentBytes -= st.totalSent
+	closed.RecvBytes -= st.totalRecv
+	closed.SentPackets -= st.totalSentPackets
+	closed.RecvPackets -= st.totalRecvPackets
+	closed.Retransmits -= st.totalRetransmits
+	closed.TCPEstablished -= st.totalTCPEstablished
+	closed.TCPClosed -= st.totalTCPClosed
+
+	// Update stats object with latest values
+	st.totalSent = active.SentBytes
+	st.totalRecv = active.RecvBytes
+	st.totalRecvPackets = active.RecvPackets
+	st.totalSentPackets = active.SentBytes
+	st.totalRetransmits = active.Retransmits
+	st.totalTCPEstablished = active.TCPEstablished
+	st.totalTCPClosed = active.TCPClosed
 }
 
 func (ns *networkState) updateConnWithStats(client *client, key string, c *ConnectionStats) {
-	if st, ok := client.stats[key]; ok {
-		// Check for underflows
-		ns.handleStatsUnderflow(key, st, c)
-
-		c.LastSentBytes = c.MonotonicSentBytes - st.totalSent
-		c.LastRecvBytes = c.MonotonicRecvBytes - st.totalRecv
-		c.LastSentPackets = c.MonotonicSentPackets - st.totalSentPackets
-		c.LastRecvPackets = c.MonotonicRecvPackets - st.totalRecvPackets
-		c.LastRetransmits = c.MonotonicRetransmits - st.totalRetransmits
-		c.LastTCPEstablished = c.MonotonicTCPEstablished - st.totalTCPEstablished
-		c.LastTCPClosed = c.MonotonicTCPClosed - st.totalTCPClosed
-
-		// Update stats object with latest values
-		st.totalSent = c.MonotonicSentBytes
-		st.totalRecv = c.MonotonicRecvBytes
-		st.totalSentPackets = c.MonotonicSentPackets
-		st.totalRecvPackets = c.MonotonicRecvPackets
-		st.totalRetransmits = c.MonotonicRetransmits
-		st.totalTCPEstablished = c.MonotonicTCPEstablished
-		st.totalTCPClosed = c.MonotonicTCPClosed
-	} else {
-		c.LastSentBytes = c.MonotonicSentBytes
-		c.LastRecvBytes = c.MonotonicRecvBytes
-		c.LastRecvPackets = c.MonotonicRecvPackets
-		c.LastSentPackets = c.MonotonicSentPackets
-		c.LastRetransmits = c.MonotonicRetransmits
-		c.LastTCPEstablished = c.MonotonicTCPEstablished
-		c.LastTCPClosed = c.MonotonicTCPClosed
+	st, ok := client.stats[key]
+	if !ok {
+		return
 	}
+
+	// Check for underflows
+	ns.handleStatsUnderflow(key, st, c)
+
+	newTotals := stats{}
+	newTotals.totalSent = c.SentBytes
+	newTotals.totalRecv = c.RecvBytes
+	newTotals.totalSentPackets = c.SentPackets
+	newTotals.totalRecvPackets = c.RecvPackets
+	newTotals.totalRetransmits = c.Retransmits
+	newTotals.totalTCPEstablished = c.TCPEstablished
+	newTotals.totalTCPClosed = c.TCPClosed
+
+	c.SentBytes -= st.totalSent
+	c.RecvBytes -= st.totalRecv
+	c.SentPackets -= st.totalSentPackets
+	c.RecvPackets -= st.totalRecvPackets
+	c.Retransmits -= st.totalRetransmits
+	c.TCPEstablished -= st.totalTCPEstablished
+	c.TCPClosed -= st.totalTCPClosed
+
+	*st = newTotals
 }
 
 // handleStatsUnderflow checks if we are going to have an underflow when computing last stats and if it's the case it resets the stats to avoid it
 func (ns *networkState) handleStatsUnderflow(key string, st *stats, c *ConnectionStats) {
-	if c.MonotonicSentBytes < st.totalSent || c.MonotonicRecvBytes < st.totalRecv || c.MonotonicRetransmits < st.totalRetransmits {
+	if c.SentBytes < st.totalSent || c.RecvBytes < st.totalRecv || c.Retransmits < st.totalRetransmits {
 		ns.telemetry.statsResets++
 		log.Debugf("Stats reset triggered for key:%s, stats:%+v, connection:%+v", BeautifyKey(key), *st, *c)
 		st.totalSent = 0
@@ -717,11 +707,11 @@ func (ns *networkState) determineConnectionIntraHost(connections []ConnectionSta
 }
 
 func addConnections(a, b *ConnectionStats) {
-	a.MonotonicSentBytes += b.MonotonicSentBytes
-	a.MonotonicRecvBytes += b.MonotonicRecvBytes
-	a.MonotonicRetransmits += b.MonotonicRetransmits
-	a.MonotonicTCPEstablished += b.MonotonicTCPEstablished
-	a.MonotonicTCPClosed += b.MonotonicTCPClosed
+	a.SentBytes += b.SentBytes
+	a.RecvBytes += b.RecvBytes
+	a.Retransmits += b.Retransmits
+	a.TCPEstablished += b.TCPEstablished
+	a.TCPClosed += b.TCPClosed
 
 	if b.LastUpdateEpoch > a.LastUpdateEpoch {
 		a.LastUpdateEpoch = b.LastUpdateEpoch

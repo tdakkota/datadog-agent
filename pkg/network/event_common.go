@@ -147,23 +147,14 @@ type ConnectionStats struct {
 	Source util.Address
 	Dest   util.Address
 
-	MonotonicSentBytes uint64
-	LastSentBytes      uint64
+	SentBytes   uint64
+	RecvBytes   uint64
+	SentPackets uint64
+	RecvPackets uint64
 
-	MonotonicRecvBytes uint64
-	LastRecvBytes      uint64
-
-	MonotonicSentPackets uint64
-	LastSentPackets      uint64
-
-	MonotonicRecvPackets uint64
-	LastRecvPackets      uint64
-
-	// Last time the stats for this connection were updated
 	LastUpdateEpoch uint64
 
-	MonotonicRetransmits uint32
-	LastRetransmits      uint32
+	Retransmits uint32
 
 	RTT    uint32 // Stored in µs
 	RTTVar uint32
@@ -174,11 +165,8 @@ type ConnectionStats struct {
 	// * Value 1 represents a connection that was established after system-probe started;
 	// * Values greater than 1 should be rare, but can occur when multiple connections
 	//   are established with the same tuple betweeen two agent checks;
-	MonotonicTCPEstablished uint32
-	LastTCPEstablished      uint32
-
-	MonotonicTCPClosed uint32
-	LastTCPClosed      uint32
+	TCPEstablished uint32
+	TCPClosed      uint32
 
 	Pid   uint32
 	NetNS uint32
@@ -305,16 +293,16 @@ func ConnectionSummary(c *ConnectionStats, names map[util.Address][]string) stri
 		)
 	}
 
-	str += fmt.Sprintf("(%s) %s sent (+%s), %s received (+%s)",
+	str += fmt.Sprintf("(%s) (+%s) sent, (+%s) received",
 		c.Direction,
-		humanize.Bytes(c.MonotonicSentBytes), humanize.Bytes(c.LastSentBytes),
-		humanize.Bytes(c.MonotonicRecvBytes), humanize.Bytes(c.LastRecvBytes),
+		humanize.Bytes(c.SentBytes),
+		humanize.Bytes(c.RecvBytes),
 	)
 
 	if c.Type == TCP {
 		str += fmt.Sprintf(
-			", %d retransmits (+%d), RTT %s (± %s)",
-			c.MonotonicRetransmits, c.LastRetransmits,
+			", (+%d) retransmits , RTT %s (± %s)",
+			c.Retransmits,
 			time.Duration(c.RTT)*time.Microsecond,
 			time.Duration(c.RTTVar)*time.Microsecond,
 		)

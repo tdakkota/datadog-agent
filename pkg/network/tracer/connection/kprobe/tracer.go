@@ -326,9 +326,9 @@ func updateTCPStats(conn *network.ConnectionStats, tcpStats *netebpf.TCPStats) {
 	if conn.Type != network.TCP {
 		return
 	}
-	conn.MonotonicRetransmits = tcpStats.Retransmits
-	conn.MonotonicTCPEstablished = uint32(tcpStats.State_transitions >> netebpf.Established & 1)
-	conn.MonotonicTCPClosed = uint32(tcpStats.State_transitions >> netebpf.Close & 1)
+	conn.Retransmits = tcpStats.Retransmits
+	conn.TCPEstablished = uint32(tcpStats.State_transitions >> netebpf.Established & 1)
+	conn.TCPClosed = uint32(tcpStats.State_transitions >> netebpf.Close & 1)
 	conn.RTT = tcpStats.Rtt
 	conn.RTTVar = tcpStats.Rtt_var
 }
@@ -361,19 +361,19 @@ func (t *kprobeTracer) getTCPStats(stats *netebpf.TCPStats, tuple *netebpf.ConnT
 
 func populateConnStats(stats *network.ConnectionStats, t *netebpf.ConnTuple, s *netebpf.ConnStats) {
 	*stats = network.ConnectionStats{
-		Pid:                  t.Pid,
-		NetNS:                t.Netns,
-		Source:               t.SourceAddress(),
-		Dest:                 t.DestAddress(),
-		SPort:                t.Sport,
-		DPort:                t.Dport,
-		SPortIsEphemeral:     network.IsPortInEphemeralRange(t.Sport),
-		MonotonicSentBytes:   s.Sent_bytes,
-		MonotonicRecvBytes:   s.Recv_bytes,
-		MonotonicSentPackets: s.Sent_packets,
-		MonotonicRecvPackets: s.Recv_packets,
-		LastUpdateEpoch:      s.Timestamp,
-		IsAssured:            s.IsAssured(),
+		Pid:              t.Pid,
+		NetNS:            t.Netns,
+		Source:           t.SourceAddress(),
+		Dest:             t.DestAddress(),
+		SPort:            t.Sport,
+		DPort:            t.Dport,
+		SPortIsEphemeral: network.IsPortInEphemeralRange(t.Sport),
+		SentBytes:        s.Sent_bytes,
+		RecvBytes:        s.Recv_bytes,
+		SentPackets:      s.Sent_packets,
+		RecvPackets:      s.Recv_packets,
+		LastUpdateEpoch:  s.Timestamp,
+		IsAssured:        s.IsAssured(),
 	}
 
 	if t.Type() == netebpf.TCP {

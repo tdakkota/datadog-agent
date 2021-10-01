@@ -59,11 +59,11 @@ func FormatConnection(
 	c.Type = formatType(conn.Type)
 	c.IsLocalPortEphemeral = formatEphemeralType(conn.SPortIsEphemeral)
 	c.PidCreateTime = 0
-	c.LastBytesSent = conn.LastSentBytes
-	c.LastBytesReceived = conn.LastRecvBytes
-	c.LastPacketsSent = conn.LastSentPackets
-	c.LastPacketsReceived = conn.LastRecvPackets
-	c.LastRetransmits = conn.LastRetransmits
+	c.LastBytesSent = conn.SentBytes
+	c.LastBytesReceived = conn.RecvBytes
+	c.LastPacketsSent = conn.SentPackets
+	c.LastPacketsReceived = conn.RecvPackets
+	c.LastRetransmits = conn.Retransmits
 	c.Direction = formatDirection(conn.Direction)
 	c.NetNS = conn.NetNS
 	c.RemoteNetworkId = ""
@@ -71,8 +71,8 @@ func FormatConnection(
 	c.Rtt = conn.RTT
 	c.RttVar = conn.RTTVar
 	c.IntraHost = conn.IntraHost
-	c.LastTcpEstablished = conn.LastTCPEstablished
-	c.LastTcpClosed = conn.LastTCPClosed
+	c.LastTcpEstablished = conn.TCPEstablished
+	c.LastTcpClosed = conn.TCPClosed
 
 	c.RouteIdx = formatRouteIdx(conn.Via, routes)
 	dnsFormatter.FormatConnectionDNS(conn, c)

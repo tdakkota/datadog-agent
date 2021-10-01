@@ -194,9 +194,9 @@ func TestTCPSendAndReceive(t *testing.T) {
 
 	conn, ok := findConnection(c.LocalAddr(), c.RemoteAddr(), connections)
 	require.True(t, ok)
-	assert.Equal(t, 10*clientMessageSize, int(conn.MonotonicSentBytes))
-	assert.Equal(t, 10*serverMessageSize, int(conn.MonotonicRecvBytes))
-	assert.Equal(t, 0, int(conn.MonotonicRetransmits))
+	assert.Equal(t, 10*clientMessageSize, int(conn.SentBytes))
+	assert.Equal(t, 10*serverMessageSize, int(conn.RecvBytes))
+	assert.Equal(t, 0, int(conn.Retransmits))
 	assert.Equal(t, os.Getpid(), int(conn.Pid))
 	assert.Equal(t, addrPort(server.address), int(conn.DPort))
 	assert.Equal(t, network.OUTGOING, conn.Direction)
@@ -245,9 +245,9 @@ func TestPreexistingConnectionDirection(t *testing.T) {
 
 	conn, ok := findConnection(c.LocalAddr(), c.RemoteAddr(), connections)
 	require.True(t, ok)
-	assert.Equal(t, clientMessageSize, int(conn.MonotonicSentBytes))
-	assert.Equal(t, serverMessageSize, int(conn.MonotonicRecvBytes))
-	assert.Equal(t, 0, int(conn.MonotonicRetransmits))
+	assert.Equal(t, clientMessageSize, int(conn.SentBytes))
+	assert.Equal(t, serverMessageSize, int(conn.RecvBytes))
+	assert.Equal(t, 0, int(conn.Retransmits))
 	assert.Equal(t, os.Getpid(), int(conn.Pid))
 	assert.Equal(t, addrPort(server.address), int(conn.DPort))
 	assert.Equal(t, network.OUTGOING, conn.Direction)
@@ -301,17 +301,17 @@ func TestTCPShortlived(t *testing.T) {
 		return ok
 	}, 3*time.Second, time.Second, "connection not found")
 
-	assert.Equal(t, clientMessageSize, int(conn.MonotonicSentBytes))
-	assert.Equal(t, serverMessageSize, int(conn.MonotonicRecvBytes))
-	assert.Equal(t, 0, int(conn.MonotonicRetransmits))
+	assert.Equal(t, clientMessageSize, int(conn.SentBytes))
+	assert.Equal(t, serverMessageSize, int(conn.RecvBytes))
+	assert.Equal(t, 0, int(conn.Retransmits))
 	assert.Equal(t, os.Getpid(), int(conn.Pid))
 	assert.Equal(t, addrPort(server.address), int(conn.DPort))
 	assert.Equal(t, network.OUTGOING, conn.Direction)
 	assert.True(t, conn.IntraHost)
 
 	// Verify the short lived connection is accounting for both TCP_ESTABLISHED and TCP_CLOSED events
-	assert.Equal(t, uint32(1), conn.MonotonicTCPEstablished)
-	assert.Equal(t, uint32(1), conn.MonotonicTCPClosed)
+	assert.Equal(t, uint32(1), conn.TCPEstablished)
+	assert.Equal(t, uint32(1), conn.TCPClosed)
 
 	_, ok := findConnection(c.LocalAddr(), c.RemoteAddr(), getConnections(t, tr))
 	assert.False(t, ok)
@@ -370,9 +370,9 @@ func TestTCPOverIPv6(t *testing.T) {
 
 	conn, ok := findConnection(c.LocalAddr(), c.RemoteAddr(), connections)
 	require.True(t, ok)
-	assert.Equal(t, clientMessageSize, int(conn.MonotonicSentBytes))
-	assert.Equal(t, serverMessageSize, int(conn.MonotonicRecvBytes))
-	assert.Equal(t, 0, int(conn.MonotonicRetransmits))
+	assert.Equal(t, clientMessageSize, int(conn.SentBytes))
+	assert.Equal(t, serverMessageSize, int(conn.RecvBytes))
+	assert.Equal(t, 0, int(conn.Retransmits))
 	assert.Equal(t, os.Getpid(), int(conn.Pid))
 	assert.Equal(t, ln.Addr().(*net.TCPAddr).Port, int(conn.DPort))
 	assert.Equal(t, network.OUTGOING, conn.Direction)
@@ -467,13 +467,13 @@ func TestUDPSendAndReceive(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, network.OUTGOING, outgoing.Direction)
 
-	require.Equal(t, clientMessageSize, int(outgoing.MonotonicSentBytes))
-	require.Equal(t, serverMessageSize, int(outgoing.MonotonicRecvBytes))
+	require.Equal(t, clientMessageSize, int(outgoing.SentBytes))
+	require.Equal(t, serverMessageSize, int(outgoing.RecvBytes))
 	require.True(t, outgoing.IntraHost)
 
 	// make sure the inverse values are seen for the other message
-	require.Equal(t, serverMessageSize, int(incoming.MonotonicSentBytes))
-	require.Equal(t, clientMessageSize, int(incoming.MonotonicRecvBytes))
+	require.Equal(t, serverMessageSize, int(incoming.SentBytes))
+	require.Equal(t, clientMessageSize, int(incoming.RecvBytes))
 	require.True(t, incoming.IntraHost)
 }
 
@@ -1036,7 +1036,7 @@ func testDNSStats(t *testing.T, domain string, success int, failure int, timeout
 	conn, ok := findConnection(dnsClientAddr, dnsServerAddr, connections)
 	require.True(t, ok)
 
-	assert.Equal(t, queryMsg.Len(), int(conn.MonotonicSentBytes))
+	assert.Equal(t, queryMsg.Len(), int(conn.SentBytes))
 	assert.Equal(t, os.Getpid(), int(conn.Pid))
 	assert.Equal(t, dnsServerAddr.Port, int(conn.DPort))
 
@@ -1110,8 +1110,8 @@ func TestTCPEstablished(t *testing.T) {
 	conn, ok := findConnection(laddr, raddr, connections)
 
 	require.True(t, ok)
-	assert.Equal(t, uint32(1), conn.LastTCPEstablished)
-	assert.Equal(t, uint32(0), conn.LastTCPClosed)
+	assert.Equal(t, uint32(1), conn.TCPEstablished)
+	assert.Equal(t, uint32(0), conn.TCPClosed)
 
 	c.Close()
 	// Wait for the connection to be sent from the perf buffer
@@ -1120,8 +1120,8 @@ func TestTCPEstablished(t *testing.T) {
 	connections = getConnections(t, tr)
 	conn, ok = findConnection(laddr, raddr, connections)
 	require.True(t, ok)
-	assert.Equal(t, uint32(0), conn.LastTCPEstablished)
-	assert.Equal(t, uint32(1), conn.LastTCPClosed)
+	assert.Equal(t, uint32(0), conn.TCPEstablished)
+	assert.Equal(t, uint32(1), conn.TCPClosed)
 }
 
 func TestTCPEstablishedPreExistingConn(t *testing.T) {
@@ -1157,8 +1157,8 @@ func TestTCPEstablishedPreExistingConn(t *testing.T) {
 	conn, ok := findConnection(laddr, raddr, connections)
 
 	require.True(t, ok)
-	assert.Equal(t, uint32(0), conn.MonotonicTCPEstablished)
-	assert.Equal(t, uint32(1), conn.MonotonicTCPClosed)
+	assert.Equal(t, uint32(0), conn.TCPEstablished)
+	assert.Equal(t, uint32(1), conn.TCPClosed)
 }
 
 func TestUnconnectedUDPSendIPv4(t *testing.T) {
@@ -1183,7 +1183,7 @@ func TestUnconnectedUDPSendIPv4(t *testing.T) {
 	})
 
 	require.Len(t, outgoing, 1)
-	assert.Equal(t, bytesSent, int(outgoing[0].MonotonicSentBytes))
+	assert.Equal(t, bytesSent, int(outgoing[0].SentBytes))
 }
 
 func TestConnectedUDPSendIPv6(t *testing.T) {
@@ -1213,7 +1213,7 @@ func TestConnectedUDPSendIPv6(t *testing.T) {
 
 	require.Len(t, outgoing, 1)
 	assert.Equal(t, remoteAddr.IP.String(), outgoing[0].Dest.String())
-	assert.Equal(t, bytesSent, int(outgoing[0].MonotonicSentBytes))
+	assert.Equal(t, bytesSent, int(outgoing[0].SentBytes))
 }
 
 func TestConnectionClobber(t *testing.T) {
