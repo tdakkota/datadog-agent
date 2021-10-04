@@ -40,6 +40,7 @@ type Agent struct {
 	OTLPReceiver          *api.OTLPReceiver
 	Concentrator          *stats.Concentrator
 	ClientStatsAggregator *stats.ClientStatsAggregator
+	PipelineStatsAggregator *stats.PipelineStatsAggregator
 	Blacklister           *filters.Blacklister
 	Replacer              *filters.Replacer
 	PrioritySampler       *sampler.PrioritySampler
@@ -338,6 +339,11 @@ func (a *Agent) processStats(in pb.ClientStatsPayload, lang, tracerVersion strin
 	return in
 }
 
+func (a *Agent) processPipelineStats(in pb.ClientPipelineStatsPayload, lang, tracerVersion string) pb.ClientPipelineStatsPayload {
+	// todo: Add normalization
+	return in
+}
+
 func mergeDuplicates(s pb.ClientStatsBucket) {
 	indexes := make(map[stats.Aggregation]int, len(s.Stats))
 	for i, g := range s.Stats {
@@ -358,6 +364,11 @@ func mergeDuplicates(s pb.ClientStatsBucket) {
 // ProcessStats processes incoming client stats in from the given tracer.
 func (a *Agent) ProcessStats(in pb.ClientStatsPayload, lang, tracerVersion string) {
 	a.ClientStatsAggregator.In <- a.processStats(in, lang, tracerVersion)
+}
+
+// ProcessPipelineStats processes incoming client pipeline stats in from the given tracer.
+func (a *Agent) ProcessPipelineStats(in pb.ClientPipelineStatsPayload, lang, tracerVersion string) {
+	a.PipelineStatsAggregator.In <- a.processPipelineStats(in, lang, tracerVersion)
 }
 
 // sample decides whether the trace will be kept and extracts any APM events

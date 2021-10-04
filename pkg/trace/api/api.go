@@ -75,6 +75,7 @@ type HTTPReceiver struct {
 	dynConf        *sampler.DynamicConfig
 	server         *http.Server
 	statsProcessor StatsProcessor
+	pipelineStatsProcessor PipelineStatsProcessor
 	appsecHandler  http.Handler
 
 	debug               bool
@@ -431,6 +432,12 @@ type StatsProcessor interface {
 	ProcessStats(p pb.ClientStatsPayload, lang, tracerVersion string)
 }
 
+// PipelineStatsProcessor implementations are able to process incoming client pipeline stats.
+type PipelineStatsProcessor interface {
+	// ProcessPipelineStats takes a pipeline stats payload and consumes it.
+	ProcessPipelineStats(p pb.ClientPipelineStatsPayload, lang, tracerVersion string)
+}
+
 // handleStats handles incoming stats payloads.
 func (r *HTTPReceiver) handleStats(w http.ResponseWriter, req *http.Request) {
 	defer timing.Since("datadog.trace_agent.receiver.stats_process_ms", time.Now())
@@ -449,6 +456,26 @@ func (r *HTTPReceiver) handleStats(w http.ResponseWriter, req *http.Request) {
 	metrics.Count("datadog.trace_agent.receiver.stats_buckets", int64(len(in.Stats)), ts.AsTags(), 1)
 
 	r.statsProcessor.ProcessStats(in, req.Header.Get(headerLang), req.Header.Get(headerTracerVersion))
+}
+
+// handlePipelineStats handles incoming pipeline stats payloads.
+func (r *HTTPReceiver) handlePipelineStats(w http.ResponseWriter, req *http.Request) {
+	defer timing.Since("datadog.trace_agent.receiver.pipeline_stats_process_ms", time.Now())
+
+	ts := r.tagStats(v01, req.Header)
+	rd := apiutil.NewLimitedReader(req.Body, r.conf.MaxRequestBytes)
+	req.Header.Set("Accept", "application/msgpack")
+	var in pb.ClientPipelineStatsPayload
+	if err := msgp.Decode(rd, &in); err != nil {
+		httpDecodingError(err, []string{"handler:pipeline_stats", "codec:msgpack", "v:v0.1"}, w)
+		return
+	}
+
+	metrics.Count("datadog.trace_agent.receiver.pipeline_stats_payload", 1, ts.AsTags(), 1)
+	metrics.Count("datadog.trace_agent.receiver.pipeline_stats_bytes", rd.Count, ts.AsTags(), 1)
+	metrics.Count("datadog.trace_agent.receiver.pipeline_stats_buckets", int64(len(in.Stats)), ts.AsTags(), 1)
+
+	r.pipelineStatsProcessor.ProcessPipelineStats(in, req.Header.Get(headerLang), req.Header.Get(headerTracerVersion))
 }
 
 // handleTraces knows how to handle a bunch of traces
